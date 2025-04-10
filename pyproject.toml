@@ -1,0 +1,27 @@
+[project]
+authors = [{name = "Naitian Zhou", email = "naitian@naitian.org"}]
+dependencies = []
+description = "Add a short description here"
+name = "fashion"
+requires-python = ">= 3.11"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+fashion = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.dependencies]
+nltk = ">=3.9.1,<4"
+ipython = ">=9.0.2,<10"
+ipdb = ">=0.13.13,<0.14"
+spacy = ">=3.8.2,<4"
+pip = ">=25.0.1,<26"
