@@ -4,14 +4,12 @@ Train huggingface deberta classifier on fashion dataset.
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
-from unittest.util import _MAX_LENGTH
 
 import pandas as pd
 import torch
 from datasets import Dataset
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.utils.rnn import pad_sequence
