@@ -52,6 +52,7 @@ def filter_fashion_texts(df) -> pd.DataFrame:
         do_predict=True,
         per_device_eval_batch_size=64,
         dataloader_drop_last=False,
+        dataloader_num_workers=8,
     )
 
     # init trainer

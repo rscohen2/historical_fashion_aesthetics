@@ -10,6 +10,8 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM
 
+from fashion.utils import CHICAGO_PATH
+
 
 def strip_punctuation(text):
     # Use regex to remove all punctuation
@@ -31,11 +33,20 @@ class FashionExtractor:
     def is_fashion(self, sentence) -> list[tuple[int, int]]:
         raise NotImplementedError
 
-    def extract(self, sentences) -> list[tuple[str, list[tuple[int, int]]]]:
+    def extract(
+        self, sentences, chunk_start_idx=0
+    ) -> list[tuple[str, list[tuple[int, int]]]]:
         fashion_sentences = []
         for sentence in sentences:
             if word_inds := self.is_fashion(sentence):
-                fashion_sentences.append((sentence.text, word_inds))
+                fashion_sentences.append(
+                    (
+                        sentence.text,
+                        word_inds,
+                        chunk_start_idx + sentence[0].idx,
+                        chunk_start_idx + sentence[-1].idx + len(sentence[-1].text),
+                    )
+                )
         return fashion_sentences
 
 
@@ -51,20 +62,6 @@ class NaiveKeywordExtractor(FashionExtractor):
         ]
 
 
-def reverse_offset_mapping(offset_mapping):
-    word_to_token_indices = []
-    current_token_indices = []
-    for index, offsets in enumerate(offset_mapping):
-        if offsets[0] == 0 and offsets[1] == 0:
-            continue
-        if offsets[0] == 0 and current_token_indices:
-            word_to_token_indices.append(current_token_indices)
-            current_token_indices = []
-        current_token_indices.append(index)
-
-    return word_to_token_indices
-
-
 # Function to read a text file
 def read_file(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
@@ -77,25 +74,34 @@ def save_results_csv(fashion_results, output_filename):
     with open(output_filename, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(
-            ["filename", "sentence", "term", "start_idx", "end_idx"]
+            [
+                "filename",
+                "sentence",
+                "term",
+                "start_idx",
+                "end_idx",
+                "sentence_start_idx",
+                "sentence_end_idx",
+            ]
         )  # Header row
 
         for filename, (sentences) in fashion_results.items():
-            for sentence, indices in sentences:
+            for sentence, indices, sentence_start, sentence_end in sentences:
                 for start, end in indices:
                     # Extract the fashion term from the sentence
                     fashion_term = sentence[start:end]
                     # Write the filename and the fashion term to the CSV file
-                    writer.writerow([filename, sentence, fashion_term, start, end])
-
-
-# def process_file(doc, filename):
-#     sentences = preprocess(doc)
-#     # Process the text for fashion-related sentences
-#     fashion_sentences = extract_fashion_terms(sentences)
-#     # Store results
-
-#     return fashion_sentences, filename
+                    writer.writerow(
+                        [
+                            filename,
+                            sentence,
+                            fashion_term,
+                            start,
+                            end,
+                            sentence_start,
+                            sentence_end,
+                        ]
+                    )
 
 
 def load_texts(directory, max_files):
@@ -112,14 +118,15 @@ def load_texts(directory, max_files):
             text = read_file(file_path)
 
             current_chunk = ""
-            for chunk in text.split("\n"):
-                if chunk.strip():
-                    current_chunk += chunk.strip() + "\n"
+            chunk_start_idx = 0
+            for chunk in text.split("\n\n"):
+                current_chunk += chunk + "\n\n"
                 if len(current_chunk) > 10000:
-                    yield filename, current_chunk.strip()
+                    yield filename, current_chunk, chunk_start_idx
+                    chunk_start_idx += len(current_chunk)
                     current_chunk = ""
             if current_chunk.strip():
-                yield filename, current_chunk
+                yield filename, current_chunk, chunk_start_idx
 
 
 # Main function to process all files in a directory (limiting to first 3 files)
@@ -128,17 +135,23 @@ def process_all_files(directory, max_files=None):
 
     nlp = spacy.load("en_core_web_sm")
     # nlp.add_pipe("sentencizer")
-    filenames, texts = zip(*load_texts(directory, max_files=max_files))
+    filenames, texts, chunk_start_idxs = zip(
+        *load_texts(directory, max_files=max_files)
+    )
     docs = nlp.pipe(texts, batch_size=64, n_process=32)
 
     extractor = NaiveKeywordExtractor()
     # extractor = BertFashionExtractor()
 
-    for filename, doc in tqdm(
-        zip(filenames, docs), total=len(filenames), desc="Extracting fashion sentences"
+    for filename, doc, chunk_start_idx in tqdm(
+        zip(filenames, docs, chunk_start_idxs),
+        total=len(filenames),
+        desc="Extracting fashion sentences",
     ):
         sentences = preprocess(doc)
-        fashion_sentences = extractor.extract(sentences)
+        fashion_sentences = extractor.extract(
+            sentences, chunk_start_idx=chunk_start_idx
+        )
         fashion_results[filename].extend(fashion_sentences)
 
     # sentence_futures = [
@@ -176,7 +189,7 @@ def main(input_directory, max_files, output_filename):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--input_directory", type=str, default="./data/ChicagoCorpus/CLEAN_TEXTS"
+        "--input_directory", type=str, default=CHICAGO_PATH / "CLEAN_TEXTS"
     )
     parser.add_argument("--max_files", type=int, default=None)
     parser.add_argument("--output_filename", type=str, default="fashion_results.csv")
