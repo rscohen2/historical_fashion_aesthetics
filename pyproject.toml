@@ -27,6 +27,9 @@ spacy = ">=3.8.2,<4"
 pip = ">=25.0.1,<26"
 transformers = "*"
 cuda = {version = "*", channel="nvidia/label/cuda-12.4.0"}
+numpy = "==2.0.0"
+
+[tool.pixi.feature.modern.dependencies]
 pytorch = {version = "2.*", channel="pytorch"}
 torchvision = {channel="pytorch"}
 pytorch-cuda = {channel="pytorch"}
@@ -37,3 +40,16 @@ jupyter = ">=1.1.1,<2"
 notebook = ">=7.4.0,<8"
 seaborn = ">=0.13.2,<0.14"
 matplotlib = ">=3.10.1,<4"
+
+[tool.pixi.feature.booknlp.dependencies]
+cuda = {version = "*", channel="nvidia/label/cuda-12.4.0"}
+ipython = ">=9.0.2,<10"
+ipdb = ">=0.13.13,<0.14"
+
+[tool.pixi.feature.booknlp.pypi-dependencies]
+booknlp = "*"
+
+
+[tool.pixi.environments]
+default = ["modern"]
+booknlp = ["booknlp"]
