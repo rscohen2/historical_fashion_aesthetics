@@ -1,0 +1,218 @@
+"""Information about co-occurrence of fashion items with character entity mentions."""
+
+import argparse
+import json
+from pathlib import Path
+import subprocess
+
+import pandas as pd
+from tqdm import tqdm
+
+from fashion.span_utils import get_k_closest_spans
+from fashion.utils import DATA_DIR
+
+
+def main(book_ids, rank=0):
+    fashion_mentions = pd.read_csv(DATA_DIR / "filtered_fashion_texts.csv")
+    # Index(['filename', 'sentence', 'term', 'start_idx', 'end_idx',
+    #    'sentence_start_idx', 'sentence_end_idx', 'label', 'confidence'],
+    #   dtype='object')
+    fashion_mentions = fashion_mentions.set_index("filename")
+
+    def fashion_character_cooc(book_id):
+        # get fashion terms
+        text_filename = f"{book_id}.txt"
+        fashion_mentions_book = fashion_mentions.loc[text_filename]
+        # load book tokens
+        tokens_book = pd.read_csv(
+            DATA_DIR / f"booknlp/{book_id}/{book_id}.tokens",
+            sep="\t",
+            quoting=3,  # 3 = csv.QUOTE_NONE
+        ).set_index("token_ID_within_document")
+        # get character mentions
+        character_mentions_book = pd.read_csv(
+            DATA_DIR / f"booknlp/{book_id}/{book_id}.entities", sep="\t", quoting=3
+        )
+        # merge character mentions with token offsets
+        character_mentions_book = character_mentions_book.merge(
+            tokens_book[["byte_onset"]],
+            left_on="start_token",
+            right_index=True,
+        )
+        character_mentions_book = character_mentions_book.merge(
+            tokens_book[["byte_offset"]],
+            left_on="end_token",
+            right_index=True,
+        )
+        character_mentions_book = character_mentions_book.rename(
+            columns={
+                "byte_onset": "character_start_idx",
+                "byte_offset": "character_end_idx",
+            }
+        )
+
+        book_text = open(
+            DATA_DIR / "ChicagoCorpus/CLEAN_TEXTS" / f"{text_filename}"
+        ).read()
+
+        results = []
+
+        for start_idx, end_idx, term in zip(
+            fashion_mentions_book.start_idx + fashion_mentions_book.sentence_start_idx,
+            fashion_mentions_book.end_idx + fashion_mentions_book.sentence_start_idx,
+            fashion_mentions_book.term,
+        ):
+            # get the fashion term span
+            fashion_span = (start_idx, end_idx)
+
+            closest_character_inds, closest_character_dists = get_k_closest_spans(
+                fashion_span,
+                (
+                    character_mentions_book.character_start_idx.tolist(),
+                    character_mentions_book.character_end_idx.tolist(),
+                ),
+                k=10,
+            )
+
+            # find sentence idx bounds that a token is in
+            def get_sentence_bounds(token_id):
+                sentence_id = tokens_book.loc[token_id].sentence_ID
+                start_idx = tokens_book[
+                    tokens_book.sentence_ID == sentence_id
+                ].byte_onset.min()
+                end_idx = tokens_book[
+                    tokens_book.sentence_ID == sentence_id
+                ].byte_offset.max()
+
+                return start_idx, end_idx
+
+            # # fmt: off
+            # import ipdb; ipdb.set_trace()  # noqa: E702
+            # # fmt: on
+
+            excerpt_start = max(
+                start_idx - 500,
+                get_sentence_bounds(
+                    character_mentions_book.start_token.iloc[
+                        closest_character_inds
+                    ].min()
+                )[0],
+            )
+            excerpt_end = min(
+                end_idx + 500,
+                get_sentence_bounds(
+                    character_mentions_book.end_token.iloc[closest_character_inds].max()
+                )[1],
+            )
+            if excerpt_end < start_idx or excerpt_start > end_idx:
+                print(
+                    f"Skipping {book_id} {term} ({start_idx}:{end_idx}) as the excerpt ({excerpt_start}:{excerpt_end}) does not overlap with the fashion term."
+                )
+                print(
+                    f"Excerpt: {book_text[excerpt_start:excerpt_end]}, "
+                    f"Fashion term: {book_text[start_idx:end_idx]}"
+                )
+                continue
+
+            result = {
+                "book_id": book_id,
+                "fashion_term": term,
+                "fashion_start_idx": start_idx,
+                "fashion_end_idx": end_idx,
+                "excerpt_start": int(excerpt_start),
+                "excerpt_end": int(excerpt_end),
+                "excerpt_text": book_text[excerpt_start:excerpt_end],
+                "characters": [
+                    {
+                        "character_start_idx": int(
+                            character_mentions_book.character_start_idx.iloc[i]
+                        ),
+                        "character_end_idx": int(
+                            character_mentions_book.character_end_idx.iloc[i]
+                        ),
+                        "coref": str(character_mentions_book["COREF"].iloc[i]),
+                        "text": str(character_mentions_book.text.iloc[i]),
+                        "distance": int(dist),
+                    }
+                    for i, dist in zip(closest_character_inds, closest_character_dists)
+                ],
+            }
+            results.append(result)
+
+        return results
+
+    results = []
+    for bookid in tqdm(book_ids, desc="Processing books"):
+        if not (DATA_DIR / f"booknlp/{bookid}/{bookid}.entities").exists():
+            print(f"Skipping {bookid} as it has no entities file.")
+            continue
+        try:
+            results.extend(fashion_character_cooc(bookid))
+        except Exception as e:
+            print(f"Error processing {bookid}: {e}")
+            continue
+
+    # write as ndjson
+    output_file = DATA_DIR / f"fashion_character_cooc/cooc.{rank}.ndjson"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, "w") as f:
+        for result in results:
+            f.write(f"{json.dumps(result)}\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Extract co-occurrence of fashion items with character mentions in books."
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=Path,
+        default=DATA_DIR / "booknlp",
+        help="Directory containing the booknlp data.",
+    )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=0,
+        help="Rank of the process (for distributed processing).",
+    )
+    parser.add_argument(
+        "--num_processes",
+        type=int,
+        default=1,
+        help="Total number of processes for distributed processing.",
+    )
+    args = parser.parse_args()
+
+    book_ids = sorted(
+        [bookid.stem for bookid in args.data_dir.iterdir() if bookid.is_dir()]
+    )
+    book_ids = ["00011711", "00020573"]
+
+    rank = args.rank
+    num_processes = args.num_processes
+    # start processes with other ranks
+    subprocesses = []
+    if rank == 0:
+        for i in range(1, num_processes):
+            proc = subprocess.Popen(
+                [
+                    "python",
+                    __file__,
+                    "--rank",
+                    str(i),
+                    "--num_processes",
+                    str(num_processes),
+                ]
+            )
+            subprocesses.append(proc)
+    # process texts for the current rank
+    main(book_ids[rank::num_processes], rank=rank)
+
+    # wait for all subprocesses to finish
+    if rank == 0:
+        for proc in subprocesses:
+            proc.wait()
+        print("All subprocesses finished.")
+    else:
+        print(f"Process {rank} finished processing texts.")
