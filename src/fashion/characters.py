@@ -85,8 +85,11 @@ if __name__ == "__main__":
     num_processes = args.num_processes
     # start processes with other ranks
     subprocesses = []
+
     if rank == 0:
         for i in range(1, num_processes):
+            env = os.environ.copy()
+            env["CUDA_VISIBLE_DEVICES"] = str(i % torch.cuda.device_count())
             proc = subprocess.Popen(
                 [
                     "python",
@@ -95,7 +98,8 @@ if __name__ == "__main__":
                     str(i),
                     "--num_processes",
                     str(num_processes),
-                ]
+                ],
+                env=env
             )
             subprocesses.append(proc)
     # process texts for the current rank
@@ -108,3 +112,4 @@ if __name__ == "__main__":
         print("All subprocesses finished.")
     else:
         print(f"Process {rank} finished processing texts.")
+
