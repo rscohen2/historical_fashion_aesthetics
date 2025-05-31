@@ -1,4 +1,7 @@
 data/
+*.csv
+notebooks/
+.vscode/
 
 # pixi environments
 .pixi
