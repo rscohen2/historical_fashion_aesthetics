@@ -12,8 +12,8 @@ from fashion.span_utils import get_k_closest_spans
 from fashion.utils import DATA_DIR
 
 
-def main(book_ids, rank=0):
-    fashion_mentions = pd.read_csv(DATA_DIR / "filtered_fashion_texts.csv")
+def main(book_ids, fashion_mention_file, booknlp_dir, data_dir, output_dir, rank=0):
+    fashion_mentions = pd.read_csv(fashion_mention_file)
     # Index(['filename', 'sentence', 'term', 'start_idx', 'end_idx',
     #    'sentence_start_idx', 'sentence_end_idx', 'label', 'confidence'],
     #   dtype='object')
@@ -25,13 +25,13 @@ def main(book_ids, rank=0):
         fashion_mentions_book = fashion_mentions.loc[text_filename]
         # load book tokens
         tokens_book = pd.read_csv(
-            DATA_DIR / f"booknlp/{book_id}/{book_id}.tokens",
+            booknlp_dir / f"{book_id}/{book_id}.tokens",
             sep="\t",
             quoting=3,  # 3 = csv.QUOTE_NONE
         ).set_index("token_ID_within_document")
         # get character mentions
         character_mentions_book = pd.read_csv(
-            DATA_DIR / f"booknlp/{book_id}/{book_id}.entities", sep="\t", quoting=3
+            booknlp_dir / f"{book_id}/{book_id}.entities", sep="\t", quoting=3
         )
         # merge character mentions with token offsets
         character_mentions_book = character_mentions_book.merge(
@@ -51,9 +51,7 @@ def main(book_ids, rank=0):
             }
         )
 
-        book_text = open(
-            DATA_DIR / "ChicagoCorpus/CLEAN_TEXTS" / f"{text_filename}"
-        ).read()
+        book_text = open(data_dir / f"{text_filename}").read()
 
         results = []
 
@@ -143,7 +141,7 @@ def main(book_ids, rank=0):
 
     results = []
     for bookid in tqdm(book_ids, desc="Processing books"):
-        if not (DATA_DIR / f"booknlp/{bookid}/{bookid}.entities").exists():
+        if not (booknlp_dir / f"{bookid}/{bookid}.entities").exists():
             print(f"Skipping {bookid} as it has no entities file.")
             continue
         try:
@@ -153,7 +151,7 @@ def main(book_ids, rank=0):
             continue
 
     # write as ndjson
-    output_file = DATA_DIR / f"fashion_character_cooc/cooc.{rank}.ndjson"
+    output_file = output_dir / f"cooc.{rank}.ndjson"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "w") as f:
         for result in results:
@@ -171,6 +169,24 @@ if __name__ == "__main__":
         help="Directory containing the booknlp data.",
     )
     parser.add_argument(
+        "--fashion_mention_file",
+        type=Path,
+        default=DATA_DIR / "filtered_fashion_texts.csv",
+        help="CSV file containing fashion mentions.",
+    )
+    parser.add_argument(
+        "--booknlp_dir",
+        type=Path,
+        default=DATA_DIR / "booknlp",
+        help="Directory containing the booknlp processed data.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=DATA_DIR / "fashion_character_cooc",
+        help="Directory to save the output co-occurrence data.",
+    )
+    parser.add_argument(
         "--rank",
         type=int,
         default=0,
@@ -179,15 +195,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_processes",
         type=int,
-        default=1,
+        default=4,
         help="Total number of processes for distributed processing.",
     )
     args = parser.parse_args()
 
-    book_ids = sorted(
-        [bookid.stem for bookid in args.data_dir.iterdir() if bookid.is_dir()]
-    )
-    book_ids = ["00011711", "00020573"]
+    book_ids = sorted([bookid.stem for bookid in args.data_dir.iterdir()])
+    # book_ids = ["00011711", "00020573"]
 
     rank = args.rank
     num_processes = args.num_processes
@@ -203,11 +217,26 @@ if __name__ == "__main__":
                     str(i),
                     "--num_processes",
                     str(num_processes),
+                    "--data_dir",
+                    str(args.data_dir),
+                    "--fashion_mention_file",
+                    str(args.fashion_mention_file),
+                    "--booknlp_dir",
+                    str(args.booknlp_dir),
+                    "--output_dir",
+                    str(args.output_dir),
                 ]
             )
             subprocesses.append(proc)
     # process texts for the current rank
-    main(book_ids[rank::num_processes], rank=rank)
+    main(
+        book_ids[rank::num_processes],
+        fashion_mention_file=args.fashion_mention_file,
+        booknlp_dir=args.booknlp_dir,
+        data_dir=args.data_dir,
+        output_dir=args.output_dir,
+        rank=rank,
+    )
 
     # wait for all subprocesses to finish
     if rank == 0:

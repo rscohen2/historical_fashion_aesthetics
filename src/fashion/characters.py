@@ -1,7 +1,7 @@
 import argparse
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import torch
 from booknlp.booknlp import BookNLP
@@ -47,10 +47,8 @@ model_params = process_model_files(model_params, device=torch.device("cpu"))
 booknlp = BookNLP("en", model_params)
 
 
-def process_texts(rank, num_processes):
-    texts = sorted(list(Path("data/ChicagoCorpus/CLEAN_TEXTS").glob("*.txt")))
-
-    for text_file in tqdm(texts[rank::num_processes]):
+def process_texts(texts):
+    for text_file in tqdm(texts):
         print(f"Processing file: {text_file}")
         input_file = str(text_file)
         book_id = text_file.stem  # Use the filename without extension as book_id
@@ -67,6 +65,12 @@ def process_texts(rank, num_processes):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process texts with BookNLP.")
+    parser.add_argument(
+        "--data_dir",
+        type=Path,
+        default=Path("data/ChicagoCorpus/CLEAN_TEXTS"),
+        help="Directory containing the text files to process.",
+    )
     parser.add_argument(
         "--rank",
         type=int,
@@ -94,16 +98,22 @@ if __name__ == "__main__":
                 [
                     "python",
                     __file__,
+                    "--data_dir",
+                    str(args.data_dir),
                     "--rank",
                     str(i),
                     "--num_processes",
                     str(num_processes),
                 ],
-                env=env
+                env=env,
             )
             subprocesses.append(proc)
     # process texts for the current rank
-    process_texts(rank, num_processes)
+    texts = sorted(list(args.data_dir.glob("*.txt")))[
+        rank::num_processes
+    ]
+
+    process_texts(texts)
 
     # wait for all subprocesses to finish
     if rank == 0:
@@ -112,4 +122,3 @@ if __name__ == "__main__":
         print("All subprocesses finished.")
     else:
         print(f"Process {rank} finished processing texts.")
-

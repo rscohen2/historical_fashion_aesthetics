@@ -6,9 +6,7 @@ import re
 from collections import defaultdict
 
 import spacy
-import torch
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer, AutoModelForMaskedLM
 
 from fashion.utils import CHICAGO_PATH
 
