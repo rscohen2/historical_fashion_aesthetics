@@ -279,6 +279,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/87/04/9d75e1d3bb4ab8ec67ff10919476ccdee06c098bcfcf3a352da5f985171d/absl_py-2.3.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/2b/03/13dde6512ad7b4557eb792fbcf0c653af6076b81e5941d36ec61f7ce6028/astunparse-1.6.3-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9a/fe/4e654bb7f1b90748e73545323f2bd8700f87e530fce4d7cf085c8472b83a/booknlp-1.0.8-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/91/db/a0335710caaa6d0aebdaa65ad4df789c15d89b7babd9a30277838a7d9aac/emoji-2.14.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b8/25/155f9f080d5e4bc0082edfda032ea2bc2b8fab3f4d25d46c1e9dd22a1a89/flatbuffers-25.2.10-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a3/61/8001b38461d751cd1a0c3a6ae84346796a5758123f3ed97a1b121dfbf4f3/gast-0.6.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a3/de/c648ef6835192e6e2cc03f40b19eeda4382c49b5bafb43d88b931c4c74ac/google_pasta-0.2.0-py3-none-any.whl
@@ -316,6 +317,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/21/c3/b2f2f09da4a85a8dcd5a3e63a5707b6c126c5be29bf846aa78dfb1168631/ray-2.46.0-cp312-cp312-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/c1/b1/3baf80dc6d2b7bc27a95a67752d0208e410351e3feb4eb78de5f77454d8d/referencing-0.36.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7a/95/dd6b91cd4560da41df9d7030a038298a67d24f8ca38e150562644c829c48/rpds_py-0.25.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/ac/f6/c50d0ee85e40687a81a95d90d426938d0d83ac0683efa2b87fa4110b665c/stanza-1.10.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/5d/12/4f70e8e2ba0dbe72ea978429d8530b0333f0ed2140cc571a48802878ef99/tensorboard-2.19.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7a/13/e503968fefabd4c6b2650af21e110aa8466fe21432cd7c43a84577a89438/tensorboard_data_server-0.7.2-py3-none-any.whl
@@ -818,11 +820,14 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zlib-1.3.1-hb9d3cd8_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py312h66e93f0_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
+      - pypi: https://files.pythonhosted.org/packages/91/db/a0335710caaa6d0aebdaa65ad4df789c15d89b7babd9a30277838a7d9aac/emoji-2.14.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e3/01/7e8561e33e79b408d9526b22b50e20bfdd8e551979237ad5c972759fe7d8/little_mallet_wrapper-0.5.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f1/54/65af8de681fa8255402c80eda2a501ba467921d5a7a028c9c22a2c2eedb5/msgpack-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/eb/8d/776adee7bbf76365fdd7f2552710282c79a4ead5d2a46408c9043a2b70ba/networkx-3.5-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/28/50/1925de813499546bc8ab3ae857e3ec84efe7d2f19b34529d0c7c3d02d11d/protobuf-6.30.2-cp39-abi3-manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/72/3a/7fdc35b57324eba4061c12ba29a7e1c1862d3c5fbcec6cd31d7fcaeb7df2/pyloess-0.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/7f/6f/d411fcad98b90247318fee6645a803934fc7a6bf4fb49bfcddf80ac00a85/ray-2.44.1-cp312-cp312-manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/ac/f6/c50d0ee85e40687a81a95d90d426938d0d83ac0683efa2b87fa4110b665c/stanza-1.10.1-py3-none-any.whl
       - pypi: .
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-3_kmp_llvm.conda
@@ -2358,6 +2363,15 @@ packages:
   purls: []
   size: 69544
   timestamp: 1739569648873
+- pypi: https://files.pythonhosted.org/packages/91/db/a0335710caaa6d0aebdaa65ad4df789c15d89b7babd9a30277838a7d9aac/emoji-2.14.1-py3-none-any.whl
+  name: emoji
+  version: 2.14.1
+  sha256: 35a8a486c1460addb1499e3bf7929d3889b2e2841a57401903699fef595e942b
+  requires_dist:
+  - typing-extensions>=4.7.0 ; python_full_version < '3.9'
+  - pytest>=7.4.4 ; extra == 'dev'
+  - coverage ; extra == 'dev'
+  requires_python: '>=3.7'
 - conda: https://conda.anaconda.org/conda-forge/noarch/exceptiongroup-1.2.2-pyhd8ed1ab_1.conda
   sha256: cbde2c64ec317118fc06b223c5fd87c8a680255e7348dd60e7b292d2e103e701
   md5: a16662747cdeb9abbac74d0057cc976e
@@ -2416,11 +2430,12 @@ packages:
 - pypi: .
   name: fashion
   version: 0.1.0
-  sha256: 9090a35d6b40afebbed2abcd67adc58c34340660578feacd9bffa700bc5579eb
+  sha256: cfaadd3de1a40de7358e70a7834d3090f6ddd25494b71feddd4bb03d49a42f10
   requires_dist:
   - ray>=2.44.1,<3
   - pyloess>=0.1.0,<0.2
   - little-mallet-wrapper>=0.5.0,<0.6
+  - stanza>=1.10.1,<2
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/linux-64/ffmpeg-4.4.2-gpl_hdf48244_113.conda
@@ -5528,6 +5543,42 @@ packages:
   - pytest>=7.2 ; extra == 'test'
   - pytest-cov>=4.0 ; extra == 'test'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/eb/8d/776adee7bbf76365fdd7f2552710282c79a4ead5d2a46408c9043a2b70ba/networkx-3.5-py3-none-any.whl
+  name: networkx
+  version: '3.5'
+  sha256: 0030d386a9a06dee3565298b4a734b68589749a544acbb6c412dc9e2489ec6ec
+  requires_dist:
+  - numpy>=1.25 ; extra == 'default'
+  - scipy>=1.11.2 ; extra == 'default'
+  - matplotlib>=3.8 ; extra == 'default'
+  - pandas>=2.0 ; extra == 'default'
+  - pre-commit>=4.1 ; extra == 'developer'
+  - mypy>=1.15 ; extra == 'developer'
+  - sphinx>=8.0 ; extra == 'doc'
+  - pydata-sphinx-theme>=0.16 ; extra == 'doc'
+  - sphinx-gallery>=0.18 ; extra == 'doc'
+  - numpydoc>=1.8.0 ; extra == 'doc'
+  - pillow>=10 ; extra == 'doc'
+  - texext>=0.6.7 ; extra == 'doc'
+  - myst-nb>=1.1 ; extra == 'doc'
+  - intersphinx-registry ; extra == 'doc'
+  - osmnx>=2.0.0 ; extra == 'example'
+  - momepy>=0.7.2 ; extra == 'example'
+  - contextily>=1.6 ; extra == 'example'
+  - seaborn>=0.13 ; extra == 'example'
+  - cairocffi>=1.7 ; extra == 'example'
+  - igraph>=0.11 ; extra == 'example'
+  - scikit-learn>=1.5 ; extra == 'example'
+  - lxml>=4.6 ; extra == 'extra'
+  - pygraphviz>=1.14 ; extra == 'extra'
+  - pydot>=3.0.1 ; extra == 'extra'
+  - sympy>=1.10 ; extra == 'extra'
+  - pytest>=7.2 ; extra == 'test'
+  - pytest-cov>=4.0 ; extra == 'test'
+  - pytest-xdist>=3.0 ; extra == 'test'
+  - pytest-mpl ; extra == 'test-extras'
+  - pytest-randomly ; extra == 'test-extras'
+  requires_python: '>=3.11'
 - conda: https://conda.anaconda.org/conda-forge/noarch/networkx-3.4.2-pyh267e887_2.conda
   sha256: 39625cd0c9747fa5c46a9a90683b8997d8b9649881b3dc88336b13b7bdd60117
   md5: fd40bf7f7f4bc4b647dc8512053d9873
@@ -5624,8 +5675,6 @@ packages:
   - python_abi 3.12.* *_cp312
   constrains:
   - numpy-base <0a0
-  arch: x86_64
-  platform: linux
   license: BSD-3-Clause
   license_family: BSD
   purls:
@@ -7774,6 +7823,35 @@ packages:
   - pkg:pypi/stack-data?source=hash-mapping
   size: 26988
   timestamp: 1733569565672
+- pypi: https://files.pythonhosted.org/packages/ac/f6/c50d0ee85e40687a81a95d90d426938d0d83ac0683efa2b87fa4110b665c/stanza-1.10.1-py3-none-any.whl
+  name: stanza
+  version: 1.10.1
+  sha256: d0ebc22c7e7a201077e0ed88d2450e654acadb4ea0d8584d5a5eb2ae1e65c060
+  requires_dist:
+  - emoji
+  - numpy
+  - protobuf>=3.15.0
+  - requests
+  - networkx
+  - tomli ; python_full_version < '3.11'
+  - torch>=1.3.0
+  - tqdm
+  - check-manifest ; extra == 'dev'
+  - coverage ; extra == 'test'
+  - pytest ; extra == 'test'
+  - transformers>=3.0.0 ; extra == 'transformers'
+  - peft>=0.6.1 ; extra == 'transformers'
+  - datasets ; extra == 'datasets'
+  - jieba ; extra == 'tokenizers'
+  - pythainlp ; extra == 'tokenizers'
+  - python-crfsuite ; extra == 'tokenizers'
+  - spacy ; extra == 'tokenizers'
+  - sudachidict-core ; extra == 'tokenizers'
+  - sudachipy ; extra == 'tokenizers'
+  - spacy ; extra == 'visualization'
+  - streamlit ; extra == 'visualization'
+  - ipython ; extra == 'visualization'
+  requires_python: '>=3.8'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/statsmodels-0.14.4-py312hc0a28a1_0.conda
   sha256: 6cc65ba902b32207e8a697b0e0408a28d6cc166be04f1882c40739a86a253d22
   md5: 97dc960f3d9911964d73c2cf240baea5
