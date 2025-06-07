@@ -28,6 +28,8 @@ pip = ">=25.0.1,<26"
 transformers = "*"
 cuda = {version = "*", channel="nvidia/label/cuda-12.4.0"}
 numpy = "==2.0.0"
+llm = ">=0.25,<0.26"
+pydantic = ">=2.11.4,<3"
 
 [tool.pixi.feature.modern.dependencies]
 pytorch = {version = "2.*", channel="pytorch"}
@@ -40,6 +42,7 @@ jupyter = ">=1.1.1,<2"
 notebook = ">=7.4.0,<8"
 seaborn = ">=0.13.2,<0.14"
 matplotlib = ">=3.10.1,<4"
+peft = "*"
 
 [tool.pixi.feature.booknlp.dependencies]
 cuda = {version = "*", channel="nvidia/label/cuda-12.4.0"}
