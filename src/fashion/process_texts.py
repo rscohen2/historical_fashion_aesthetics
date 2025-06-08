@@ -1,14 +1,12 @@
 import argparse
 import csv
-from html import parser
-import os
 import re
 from collections import defaultdict
 
 import spacy
 from tqdm import tqdm
 
-from fashion.utils import CHICAGO_PATH
+from fashion.sources import Source, add_source_argument
 
 
 def strip_punctuation(text):
@@ -102,29 +100,32 @@ def save_results_csv(fashion_results, output_filename):
                     )
 
 
-def load_texts(directory, max_files):
+def load_texts(datasource: Source, max_files: int | None = None):
     """
     Breaks up text into newline-delimited chunks and yields filename and text content.
     """
-    filepaths = os.listdir(directory)
-    if max_files is not None:
-        filepaths = filepaths[:max_files]
+    for i, text in enumerate(
+        tqdm(
+            datasource.iter_texts(),
+            desc="Loading files",
+            total=len(datasource) if max_files is None else max_files,
+        )
+    ):
+        if max_files is not None and i >= max_files:
+            break
 
-    for filename in tqdm(filepaths, desc="Loading files"):
-        if filename.endswith(".txt"):
-            file_path = os.path.join(directory, filename)
-            text = read_file(file_path)
+        content = text.text
 
-            current_chunk = ""
-            chunk_start_idx = 0
-            for chunk in text.split("\n\n"):
-                current_chunk += chunk + "\n\n"
-                if len(current_chunk) > 10000:
-                    yield filename, current_chunk, chunk_start_idx
-                    chunk_start_idx += len(current_chunk)
-                    current_chunk = ""
-            if current_chunk.strip():
-                yield filename, current_chunk, chunk_start_idx
+        current_chunk = ""
+        chunk_start_idx = 0
+        for chunk in content.split("\n\n"):
+            current_chunk += chunk + "\n\n"
+            if len(current_chunk) > 10000:
+                yield text.filename, current_chunk, chunk_start_idx
+                chunk_start_idx += len(current_chunk)
+                current_chunk = ""
+        if current_chunk.strip():
+            yield text.filename, current_chunk, chunk_start_idx
 
 
 # Main function to process all files in a directory (limiting to first 3 files)
@@ -152,31 +153,12 @@ def process_all_files(directory, max_files=None):
         )
         fashion_results[filename].extend(fashion_sentences)
 
-    # sentence_futures = [
-    #     process_file.remote(doc, filename) for filename, doc in zip(filenames, docs)
-    # ]
-
-    # progress_bar = tqdm(total=len(sentence_futures), desc="Processing files")
-    # while sentence_futures:
-    #     ready_sentences, sentence_futures = ray.wait(
-    #         sentence_futures, num_returns=min(len(sentence_futures), 128)
-    #     )
-    #     for filename, sentences in ray.get(ready_sentences):
-    #         if sentences:
-    #             fashion_results[filename].extend(sentences)
-    #         progress_bar.update(1)
-    # progress_bar.close()
-
-    # # Save results to CSV
-    # output_filename = os.path.join(directory, "fashion_results.csv")
-    # save_results_csv(fashion_results, output_filename)
-
     return fashion_results
 
 
-def main(input_directory, max_files, output_filename):
+def main(data_source, max_files, output_filename):
     # Load the text files from the specified directory
-    fashion_results = process_all_files(input_directory, max_files)
+    fashion_results = process_all_files(data_source, max_files)
 
     # Save the results to a CSV file
     save_results_csv(fashion_results, output_filename)
@@ -186,33 +168,9 @@ def main(input_directory, max_files, output_filename):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--input_directory", type=str, default=CHICAGO_PATH / "CLEAN_TEXTS"
-    )
+    add_source_argument(parser)
     parser.add_argument("--max_files", type=int, default=None)
     parser.add_argument("--output_filename", type=str, default="fashion_results.csv")
 
     args = parser.parse_args()
     main(**vars(args))
-
-    # # Directory where the .txt files are stored
-    # # input_directory = "ChicagoCorpus/CHICAGO_CORPUS/CHICAGO_NOVEL_CORPUS"
-    # input_directory = "./data/ChicagoCorpus/CLEAN_TEXTS"
-
-    # # Process the first 3 files in the directory
-    # results = process_all_files(input_directory)
-
-    # # Save the results to the CSV file
-    # output_filename = "fashion_results_pos.csv"
-    # save_results_csv(results, output_filename)
-
-    # # output_filename = os.path.join("..", "fashion_results.csv")
-    # # Get the absolute path of the input_directory
-    # # absolute_input_directory = os.path.abspath(input_directory)
-    # #
-    # # # Get the parent directory of the absolute path
-    # # parent_directory = os.path.dirname(absolute_input_directory)
-    # #
-    # # output_filename = os.path.join(parent_directory, 'fashion_results.csv')
-    # #
-    # # print(f"Results have been saved to {output_filename}")
