@@ -8,11 +8,12 @@ import subprocess
 import pandas as pd
 from tqdm import tqdm
 
+from fashion.sources import add_source_argument
 from fashion.span_utils import get_k_closest_spans
 from fashion.utils import DATA_DIR
 
 
-def main(book_ids, fashion_mention_file, booknlp_dir, data_dir, output_dir, rank=0):
+def main(book_ids, fashion_mention_file, booknlp_dir, data_source, output_dir, rank=0):
     fashion_mentions = pd.read_csv(fashion_mention_file)
     # Index(['filename', 'sentence', 'term', 'start_idx', 'end_idx',
     #    'sentence_start_idx', 'sentence_end_idx', 'label', 'confidence'],
@@ -51,7 +52,7 @@ def main(book_ids, fashion_mention_file, booknlp_dir, data_dir, output_dir, rank
             }
         )
 
-        book_text = open(data_dir / f"{text_filename}").read()
+        book_text = data_source.load_text(book_id).text
 
         results = []
 
@@ -162,12 +163,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Extract co-occurrence of fashion items with character mentions in books."
     )
-    parser.add_argument(
-        "--data_dir",
-        type=Path,
-        default=DATA_DIR / "booknlp",
-        help="Directory containing the booknlp data.",
-    )
+    add_source_argument(parser)
     parser.add_argument(
         "--fashion_mention_file",
         type=Path,
@@ -200,7 +196,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    book_ids = sorted([bookid.stem for bookid in args.data_dir.iterdir()])
+    book_ids = sorted(args.data_source.iter_book_ids())
     # book_ids = ["00011711", "00020573"]
 
     rank = args.rank
@@ -217,8 +213,8 @@ if __name__ == "__main__":
                     str(i),
                     "--num_processes",
                     str(num_processes),
-                    "--data_dir",
-                    str(args.data_dir),
+                    "--data_source",
+                    str(args.data_source.name.lower()),
                     "--fashion_mention_file",
                     str(args.fashion_mention_file),
                     "--booknlp_dir",
@@ -233,7 +229,7 @@ if __name__ == "__main__":
         book_ids[rank::num_processes],
         fashion_mention_file=args.fashion_mention_file,
         booknlp_dir=args.booknlp_dir,
-        data_dir=args.data_dir,
+        data_source=args.data_source,
         output_dir=args.output_dir,
         rank=rank,
     )

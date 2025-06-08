@@ -7,6 +7,8 @@ import torch
 from booknlp.booknlp import BookNLP
 from tqdm import tqdm
 
+from fashion.sources import add_source_argument
+
 
 def remove_position_ids_and_save(model_file, device, save_path):
     state_dict = torch.load(model_file, map_location=device)
@@ -47,11 +49,10 @@ model_params = process_model_files(model_params, device=torch.device("cpu"))
 booknlp = BookNLP("en", model_params)
 
 
-def process_texts(texts):
-    for text_file in tqdm(texts):
-        print(f"Processing file: {text_file}")
-        input_file = str(text_file)
-        book_id = text_file.stem  # Use the filename without extension as book_id
+def process_texts(book_ids, data_source):
+    for book_id in tqdm(book_ids):
+        print(f"Processing file: {book_id}")
+        input_file = data_source.load_text(book_id).ref
         print(f"Using book_id: {book_id}")
         output_directory = f"data/booknlp/{book_id}/"
         print(f"Output directory: {output_directory}")
@@ -65,12 +66,7 @@ def process_texts(texts):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process texts with BookNLP.")
-    parser.add_argument(
-        "--data_dir",
-        type=Path,
-        default=Path("data/ChicagoCorpus/CLEAN_TEXTS"),
-        help="Directory containing the text files to process.",
-    )
+    add_source_argument(parser)
     parser.add_argument(
         "--rank",
         type=int,
@@ -98,8 +94,8 @@ if __name__ == "__main__":
                 [
                     "python",
                     __file__,
-                    "--data_dir",
-                    str(args.data_dir),
+                    "--data_source",
+                    str(args.data_source.name.lower()),
                     "--rank",
                     str(i),
                     "--num_processes",
@@ -109,11 +105,9 @@ if __name__ == "__main__":
             )
             subprocesses.append(proc)
     # process texts for the current rank
-    texts = sorted(list(args.data_dir.glob("*.txt")))[
-        rank::num_processes
-    ]
+    texts = sorted(list(args.data_source.iter_book_ids()))[rank::num_processes]
 
-    process_texts(texts)
+    process_texts(texts, args.data_source)
 
     # wait for all subprocesses to finish
     if rank == 0:

@@ -15,7 +15,7 @@ class Text:
     filename: str
     text_id: str
     text: str
-    ref: str | None  # reference to original filepath --- for debugging
+    ref: str  # path to the file text
 
 
 class Source:
@@ -25,6 +25,12 @@ class Source:
         pass
 
     def iter_texts(self) -> Iterator[Text]:
+        raise NotImplementedError
+
+    def load_text(self, book_id: str) -> Text:
+        raise NotImplementedError
+
+    def iter_book_ids(self) -> Iterator[str]:
         raise NotImplementedError
 
     def __len__(self):
@@ -46,6 +52,10 @@ class TextDir(Source):
         with open(book_path, "r") as f:
             return Text(book_id, book_id, f.read(), str(book_path))
 
+    def iter_book_ids(self):
+        for file in self.files:
+            yield file.stem
+
     def __len__(self):
         return len(self.files)
 
@@ -65,18 +75,15 @@ class LitBank(TextDir):
 
 
 class ContempLitBank(TextDir):
-    name = "ContempLitBank"
+    name = "Contemp"
 
     def __init__(self, path: Path = CONTEMP_LITBANK_PATH):
         super().__init__(path)
 
 
 def add_source_argument(parser: argparse.ArgumentParser):
-    source_map = {
-        "chicago": Chicago,
-        "litbank": LitBank,
-        "contemp": ContempLitBank,
-    }
+    sources = [Chicago, LitBank, ContempLitBank]
+    source_map = {source.name.lower(): source for source in sources}
 
     def load_source(source_name: str) -> Source:
         if source_name not in source_map:
