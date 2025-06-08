@@ -182,21 +182,6 @@ class WearingLLM(Wearing):
 
         """).strip()
 
-        coref_user_prompt = dedent("""
-        You are given a sentence. A fashion term is wrapped in a []_fashion tag. All
-        mentions to specific entities are wrapped in []_<coref> tags.
-
-        Identify which entity is wearing or has possession of the fashion item.
-        Be careful to disambiguate different characters, including the narrator.
-        Return the coref of the entity that is wearing or has possession of the fashion item.
-
-        Provide your output in the following JSON format:
-        {{"coref": "<coref>", "reasoning": "...", "answer": true/false}}
-
-        Input:
-        {sentence}
-        """).strip()
-
         results = []
         for sentence, (target_start, target_end), entity_span in zip(
             sentences, zip(*target_spans), entity_spans
