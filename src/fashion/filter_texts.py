@@ -57,9 +57,9 @@ def filter_fashion_texts(df) -> pd.DataFrame:
 
     # init trainer
     trainer = Trainer(model=model, args=test_args, data_collator=DataCollator())
-    results = trainer.predict(eval_dataset)
-    labels = results.predictions.argmax(axis=1)
-    confidence_scores = softmax(results.predictions, axis=1).max(axis=1)
+    results = trainer.predict(eval_dataset)  # type: ignore
+    labels = results.predictions.argmax(axis=1)  # type: ignore
+    confidence_scores = softmax(results.predictions, axis=1).max(axis=1)  # type: ignore
     df["confidence"] = confidence_scores
     df = df[labels == 1]  # Filter only fashion-related texts
 
