@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-from fashion.utils import CHICAGO_PATH, CONTEMP_LITBANK_PATH, LITBANK_PATH
+import pandas as pd
+
+from fashion.utils import CHICAGO_PATH, CONTEMP_LITBANK_PATH, DATA_DIR, LITBANK_PATH
 
 
 @dataclass
@@ -81,8 +83,34 @@ class ContempLitBank(TextDir):
         super().__init__(path)
 
 
+class HathiTrust:
+    name = "HathiTrust"
+
+    def __init__(self):
+        self.metadata = pd.read_csv(DATA_DIR / "hathitrust_meta.csv")
+        self.filepaths = self.metadata["path"].tolist()
+        self.id_lookup = {Path(fp).stem: Path(fp) for fp in self.filepaths}
+
+    def iter_texts(self):
+        for filepath in self.filepaths:
+            filepath = Path(filepath)
+            with open(filepath, "r") as f:
+                yield Text(filepath.name, filepath.stem, f.read(), str(filepath))
+
+    def load_text(self, book_id: str) -> Text:
+        filepath = self.id_lookup[book_id]
+        with open(filepath, "r") as f:
+            return Text(filepath.name, book_id, f.read(), str(filepath))
+
+    def iter_book_ids(self):
+        return list(self.id_lookup.keys())
+
+    def __len__(self):
+        return len(self.filepaths)
+
+
 def add_source_argument(parser: argparse.ArgumentParser):
-    sources = [Chicago, LitBank, ContempLitBank]
+    sources = [Chicago, LitBank, ContempLitBank, HathiTrust]
     source_map = {source.name.lower(): source for source in sources}
 
     def load_source(source_name: str) -> Source:
