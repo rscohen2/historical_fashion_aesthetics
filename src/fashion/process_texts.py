@@ -1,3 +1,9 @@
+"""
+Extract fashion mentions from text files using keyword matching.
+
+python -m fashion.process_texts --data_source hathitrust  --output_filename data/hathitrust_fashion_texts.csv
+"""
+
 import argparse
 import csv
 import re
@@ -116,16 +122,51 @@ def load_texts(datasource: Source, max_files: int | None = None):
 
         content = text.text
 
-        current_chunk = ""
-        chunk_start_idx = 0
-        for chunk in content.split("\n\n"):
-            current_chunk += chunk + "\n\n"
-            if len(current_chunk) > 10000:
-                yield text.filename, current_chunk, chunk_start_idx
-                chunk_start_idx += len(current_chunk)
-                current_chunk = ""
-        if current_chunk.strip():
-            yield text.filename, current_chunk, chunk_start_idx
+        def yield_chunks_with_divider(content, divider):
+            current_chunk = ""
+            chunk_start_idx = 0
+            for chunk in content.split(divider):
+                current_chunk += chunk + divider
+                if len(current_chunk) > 10000:
+                    yield current_chunk, chunk_start_idx
+                    chunk_start_idx += len(current_chunk)
+                    current_chunk = ""
+            if current_chunk.strip():
+                yield current_chunk, chunk_start_idx
+
+        for chunk, chunk_start_idx in yield_chunks_with_divider(content, "\n\n"):
+            if len(chunk) - 10_000 > 10_000:
+                for smaller_chunk, smaller_chunk_start_idx in yield_chunks_with_divider(
+                    chunk, "\n"
+                ):
+                    yield (
+                        text.filename,
+                        smaller_chunk,
+                        chunk_start_idx + smaller_chunk_start_idx,
+                    )
+            else:
+                yield text.filename, chunk, chunk_start_idx
+
+        # current_chunk = ""
+        # chunk_start_idx = 0
+        # for chunk in content.split("\n\n"):
+        #     current_chunk += chunk + "\n\n"
+        #     if len(current_chunk) > 10000:
+        #         if len(current_chunk) - 10_000 > 10_000:
+        #             # if paragraph chunks are too long, split into smaller chunks naively
+        #             for i in range(0, len(current_chunk), 10_000):
+        #                 yield (
+        #                     text.filename,
+        #                     current_chunk[i : i + 10_000],
+        #                     chunk_start_idx,
+        #                 )
+        #                 chunk_start_idx += 10_000
+        #         else:
+        #             yield text.filename, current_chunk, chunk_start_idx
+        #             chunk_start_idx += len(current_chunk)
+        #         current_chunk = ""
+        # if current_chunk.strip():
+        #     yield text.filename, current_chunk, chunk_start_idx
 
 
 # Main function to process all files in a directory (limiting to first 3 files)
