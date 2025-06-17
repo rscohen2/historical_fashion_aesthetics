@@ -307,53 +307,6 @@ def main():
     # Load the tokenizer and model
     tokenizer = DebertaV2TokenizerFast.from_pretrained("microsoft/deberta-v3-base")  # noqa: F821
 
-    # def get_span_mask(offset_mapping, starts, stops):
-    #     # Find the token indices corresponding to the start and stop offsets
-    #     # We have stops first and then starts to get the tokens that cover the span
-
-    #     offset_mapping[-1, :] = (
-    #         offset_mapping[-2, :] + 1
-    #     )  # Fix the last token's offset mapping
-    #     token_inds = torch.searchsorted(
-    #         offset_mapping.T, torch.tensor([stops, starts])
-    #     ).T.squeeze()
-
-    #     mask = torch.zeros(offset_mapping.size(0), dtype=torch.bool)
-    #     # Set the mask to True for the tokens that cover the span
-    #     mask[token_inds[1] : token_inds[0]] = True
-    #     assert mask.sum() > 0, "Span mask is empty, check the offsets and spans."
-    #     return mask
-
-    # # Tokenize the datasets
-    # def tokenize_function(examples):
-    #     tokens = tokenizer(
-    #         examples["sentence"],
-    #         truncation=True,
-    #         return_offsets_mapping=True,
-    #     )
-
-    #     span_masks = [
-    #         get_span_mask(
-    #             torch.tensor(tokens["offset_mapping"][i]),
-    #             [start],
-    #             [end],
-    #         )
-    #         for i, (start, end) in enumerate(
-    #             zip(examples["start_idx"], examples["end_idx"])
-    #         )
-    #     ]
-
-    #     labels = examples["label"]
-
-    #     # build output dict
-    #     return {
-    #         "input_ids": tokens["input_ids"],
-    #         "attention_mask": tokens["attention_mask"],
-    #         "token_type_ids": tokens["token_type_ids"],
-    #         "span_mask": span_masks,
-    #         "label": labels,
-    #     }
-
     data_preparer = DataPreparer(tokenizer)
     train_dataset = train_dataset.map(
         data_preparer.prepare_data,
