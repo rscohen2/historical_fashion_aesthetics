@@ -1,3 +1,15 @@
+"""
+LLM gpt-4.1-nano
+              precision    recall  f1-score   support
+
+       False       0.82      0.94      0.88       682
+        True       0.90      0.72      0.80       508
+
+    accuracy                           0.85      1190
+   macro avg       0.86      0.83      0.84      1190
+weighted avg       0.85      0.85      0.84      1190
+
+"""
 import itertools
 import argparse
 import json
