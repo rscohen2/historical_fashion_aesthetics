@@ -1,6 +1,9 @@
 from textwrap import dedent
+from typing import Iterator
+from datasets import Dataset
 
 import llm
+import numpy as np
 import pydantic
 
 
@@ -213,3 +216,98 @@ class WearingLLM(Wearing):
             result.insert(end, tag)
 
         return "".join(result)
+
+
+class WearingBert(Wearing):
+    def __init__(self, model_path: str = "data/deberta-wearing/checkpoint-900"):
+        super().__init__()
+        from .bert import DebertaV2ForSpanClassification
+        from .bert import DebertaV2TokenizerFast
+        from .bert import DataCollator
+        from .bert import DataPreparer
+        from transformers import TrainingArguments
+        from transformers import Trainer
+
+        self.model = DebertaV2ForSpanClassification.from_pretrained(model_path)
+        self.tokenizer = DebertaV2TokenizerFast.from_pretrained(
+            "microsoft/deberta-v3-base"
+        )
+        self.data_collator = DataCollator()
+        self.data_preparer = DataPreparer(self.tokenizer)
+
+        test_args = TrainingArguments(
+            # output_dir=str(DATA_DIR / "fashion-filter"),
+            do_train=False,
+            do_predict=True,
+            per_device_eval_batch_size=64,
+            dataloader_drop_last=False,
+            dataloader_num_workers=8,
+        )
+
+        # init trainer
+        self.trainer = Trainer(
+            model=self.model, args=test_args, data_collator=DataCollator()
+        )
+
+    def format_data(
+        self,
+        sentences: list[str],
+        fashion_spans: list[tuple[int, int]],
+        entity_spans: list[list[tuple[int, int]]],
+        coref_labels: list[list[str]],
+    ):
+        def inner():
+            for sentence, fashion_span, datum_entity_spans, datum_coref_labels in zip(
+                sentences, fashion_spans, entity_spans, coref_labels
+            ):
+                for entity_span, coref_label in zip(
+                    datum_entity_spans, datum_coref_labels
+                ):
+                    yield {
+                        "sentence": sentence,
+                        "target_start_idx": fashion_span[0],
+                        "target_end_idx": fashion_span[1],
+                        "query_start_idx": entity_span[0],
+                        "query_end_idx": entity_span[1],
+                        "label": 0,  # initialize to 0 for non-wearing
+                    }
+
+        return inner
+
+    def is_wearing(
+        self,
+        sentences: list[str],
+        fashion_spans: list[tuple[int, int]],
+        entity_spans: list[list[tuple[int, int]]],
+        coref_labels: list[list[str]],
+    ) -> list[list[bool]]:
+        eval_dataset: Dataset = Dataset.from_generator(
+            self.format_data(sentences, fashion_spans, entity_spans, coref_labels)
+        )
+        eval_dataset = eval_dataset.map(
+            self.data_preparer.prepare_data,
+            batched=True,
+            remove_columns=eval_dataset.column_names,
+        )
+        eval_dataset.set_format(
+            type="torch",
+            columns=[
+                "input_ids",
+                "attention_mask",
+                "label",
+                "query_span_mask",
+                "target_span_mask",
+            ],
+        )
+        results = self.trainer.predict(eval_dataset)
+        labels = results.predictions.argmax(axis=1).astype(bool).tolist()
+        # renest to match the input
+        entity_counts = np.cumsum(
+            [0] + [len(datum_coref_labels) for datum_coref_labels in coref_labels]
+        )
+        nested_labels = [
+            labels[entity_counts[i] : entity_counts[i + 1]]
+            for i in range(len(entity_counts) - 1)
+        ]
+
+        return nested_labels

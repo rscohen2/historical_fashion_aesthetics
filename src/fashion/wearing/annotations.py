@@ -53,6 +53,20 @@ def get_annotation_data(filepath: str) -> List[Dict]:
             continue
         if annotations[0]["annotation"]["characters"] is None:
             annotations[0]["annotation"]["characters"] = []
+
+        # Handle some malformed data by dropping any entity mentions that are out of bounds
+        # TODO: fix this
+        annotations[0]["datum"]["characters"] = [
+            char
+            for char in annotations[0]["datum"]["characters"]
+            if char["character_start_idx"] - annotations[0]["datum"]["excerpt_start"]
+            >= 0
+            and char["character_end_idx"] - annotations[0]["datum"]["excerpt_start"]
+            <= len(annotations[0]["datum"]["excerpt_text"])
+        ]
+        if len(annotations[0]["datum"]["characters"]) == 0:
+            continue
+
         data.append(annotations[0])
     print(f"Loaded {len(data)} data points")
     return data
@@ -65,17 +79,17 @@ def get_annotation_splits(data: List[Dict]) -> List[List[Dict]]:
     """
     # get all books
     books = sorted(list(set([entry["datum"]["book_id"] for entry in data])))
+    rng = np.random.default_rng(42)
 
-    np.random.seed(42)
     # get 80% of books for train
-    train_books = set(
-        np.random.choice(books, size=int(len(books) * 0.8), replace=False)
-    )
+    train_books = set(rng.choice(books, size=int(len(books) * 0.8), replace=False))
 
     # get 10% of books for dev
     dev_books = set(
-        np.random.choice(
-            list(set(books) - train_books), size=int(len(books) * 0.1), replace=False
+        rng.choice(
+            sorted(list(set(books) - train_books)),
+            size=int(len(books) * 0.1),
+            replace=False,
         )
     )
 

@@ -1,15 +1,26 @@
 """
 LLM gpt-4.1-nano
+            precision    recall  f1-score   support
+
+       False       0.84      0.96      0.90      1185
+        True       0.95      0.81      0.87      1120
+
+    accuracy                           0.89      2305
+   macro avg       0.90      0.89      0.89      2305
+weighted avg       0.90      0.89      0.89      2305
+
+deberta-v3-base fine-tune
               precision    recall  f1-score   support
 
-       False       0.82      0.94      0.88       682
-        True       0.90      0.72      0.80       508
+       False       0.93      0.89      0.91      1185
+        True       0.89      0.93      0.91      1120
 
-    accuracy                           0.85      1190
-   macro avg       0.86      0.83      0.84      1190
-weighted avg       0.85      0.85      0.84      1190
+    accuracy                           0.91      2305
+   macro avg       0.91      0.91      0.91      2305
+weighted avg       0.91      0.91      0.91      2305
 
 """
+
 import itertools
 import argparse
 import json
@@ -17,7 +28,7 @@ import json
 from tqdm import tqdm
 from sklearn.metrics import classification_report
 
-from fashion.wearing import Wearing, WearingLLM
+from fashion.wearing import Wearing, WearingBert, WearingLLM
 from fashion.wearing.annotations import (
     explode_annotation,
     get_annotation_data,
@@ -110,6 +121,8 @@ def evaluate(data: list[dict], wearing_model: Wearing, batch_size: int = 10):
 def choose_model(model_name: str) -> Wearing:
     if model_name == "WearingLLM":
         return WearingLLM()
+    elif model_name == "WearingBert":
+        return WearingBert()
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -117,7 +130,10 @@ def choose_model(model_name: str) -> Wearing:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--wearing-model", type=str, default="WearingLLM", choices=["WearingLLM"]
+        "--wearing-model",
+        type=str,
+        default="WearingLLM",
+        choices=["WearingLLM", "WearingBert"],
     )
     parser.add_argument("--batch-size", type=int, default=10)
     args = parser.parse_args()

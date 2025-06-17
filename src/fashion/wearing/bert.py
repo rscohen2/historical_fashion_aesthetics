@@ -225,20 +225,7 @@ class DataPreparer:
     max_length = 512  # Maximum length for the input sequences
     tokenizer: DebertaV2TokenizerFast
 
-    def prepare_data(self, examples):
-        # if any(
-        #     [
-        #         examples["query_start_idx"][i] >= self.max_length
-        #         or examples["query_end_idx"][i] >= self.max_length
-        #         or examples["target_start_idx"][i] >= self.max_length
-        #         or examples["target_end_idx"][i] >= self.max_length
-        #         for i in range(len(examples["query_start_idx"]))
-        #     ]
-        # ):
-        #     raise ValueError(
-        #         "Start or end indices exceed the maximum length of the model."
-        #     )
-
+    def prepare_data(self, examples: dict) -> dict:
         tokens = self.tokenizer(
             examples["sentence"],
             truncation=True,
