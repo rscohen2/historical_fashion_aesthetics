@@ -5,6 +5,7 @@ Also used to contain some code for loading annotations.
 """
 
 import json
+from re import I
 import numpy as np
 import krippendorff
 from collections import defaultdict
@@ -113,84 +114,29 @@ def get_annotation_splits(data: List[Dict]) -> List[List[Dict]]:
     return [train_data, dev_data, test_data]
 
 
-def prepare_agreement_data(
-    data_by_datum: Dict[str, List[Dict]],
-) -> Tuple[Dict[Tuple[str, str], List[Tuple[str, bool]]], Set[str]]:
-    """
-    Prepare data for agreement analysis.
-    Returns a tuple of:
-    1. Dictionary mapping (datum_id, user_id) to their character classifications
-    2. Set of all unique tags
-    Only includes data points where all users have provided annotations.
-    """
-    # First, find all unique users
-    all_users = set()
-    for annotations in data_by_datum.values():
-        all_users.update(str(entry["user_id"]) for entry in annotations)
-
-    # Filter for data points where all users have annotated
-    complete_data = {
-        datum_id: annotations
-        for datum_id, annotations in data_by_datum.items()
-        if len(annotations) == len(all_users)
-    }
-
-    # Organize annotations by datum and user
-    datum_user_annotations = defaultdict(list)
-    all_tags = set()
-
-    for datum_id, annotations in complete_data.items():
-        for entry in annotations:
-            user_id = str(entry["user_id"])
-            characters = entry["annotation"]["characters"]
-
-            # Convert each character annotation to (tag, value) tuples
-            for tag, value in characters:
-                datum_user_annotations[(datum_id, user_id)].append((tag, value))
-                all_tags.add(tag)
-
-    return datum_user_annotations, all_tags
+def prepare_agreement_data(data: dict[str, list[dict]]) -> dict[str, list[bool]]:
+    data_by_annotator: dict[str, list[bool]] = defaultdict(list)
+    for _, entries in data.items():
+        if len(entries) != 2:
+            continue
+        for entry in entries:
+            data_by_annotator[str(entry["user_id"])].extend(
+                explode_annotation(entry["annotation"], entry["datum"])
+            )
+    return data_by_annotator
 
 
 def calculate_krippendorff_alpha(
-    datum_user_annotations: Dict[Tuple[str, str], List[Tuple[str, bool]]],
-    all_tags: Set[str],
+    datum_user_annotations: dict[str, list[bool]],
 ) -> float:
     """
     Calculate Krippendorff's alpha for the multilabel annotations.
     """
     # Create reliability data matrix
-    reliability_data = []
-
-    # Group annotations by datum_id
-    datum_groups = defaultdict(list)
-    for (datum_id, user_id), annotations in datum_user_annotations.items():
-        datum_groups[datum_id].append((user_id, annotations))
-
-    # For each datum, create a row in the reliability matrix
-    for datum_id, user_annotations in datum_groups.items():
-        # Sort by user_id to ensure consistent ordering
-        user_annotations.sort(key=lambda x: x[0])
-
-        # Create a row for each user's annotations
-        for _, annotations in user_annotations:
-            user_data = []
-            for tag in sorted(all_tags):  # Sort tags for consistent ordering
-                # Find if this tag exists in user's annotations
-                tag_value = None
-                for t, v in annotations:
-                    if t == tag:
-                        tag_value = v
-                        break
-                user_data.append(tag_value)
-            reliability_data.append(user_data)
+    reliability_data = [annotations for annotations in datum_user_annotations.values()]
 
     # Convert to numpy array for krippendorff
-    reliability_data = np.array(reliability_data)
-
-    import ipdb
-
-    ipdb.set_trace()
+    reliability_data = np.array(reliability_data).astype(int)
 
     # Calculate alpha
     alpha = krippendorff.alpha(reliability_data, level_of_measurement="nominal")
@@ -200,19 +146,14 @@ def calculate_krippendorff_alpha(
 def main():
     # Load and process data
     data_by_datum = load_and_filter_data("data/wearing_data.ndjson")
-    datum_user_annotations, all_tags = prepare_agreement_data(data_by_datum)
+    datum_user_annotations = prepare_agreement_data(data_by_datum)
 
     # Calculate agreement
-    alpha = calculate_krippendorff_alpha(datum_user_annotations, all_tags)
-
-    # Get unique users and data points
-    unique_users = set(user_id for _, user_id in datum_user_annotations.keys())
-    unique_data = set(datum_id for datum_id, _ in datum_user_annotations.keys())
+    alpha = calculate_krippendorff_alpha(datum_user_annotations)
 
     print(f"Krippendorff's alpha: {alpha:.3f}")
-    print(f"Number of users: {len(unique_users)}")
-    print(f"Number of unique tags: {len(all_tags)}")
-    print(f"Number of complete data points: {len(unique_data)}")
+    print(f"Number of users: {len(datum_user_annotations)}")
+    print(f"Number of complete data points: {len(data_by_datum)}")
 
 
 if __name__ == "__main__":
