@@ -5,14 +5,12 @@ Also used to contain some code for loading annotations.
 """
 
 import json
-from re import I
 import numpy as np
 import krippendorff
 from collections import defaultdict
-from typing import List, Dict, Tuple, Set
 
 
-def load_and_filter_data(filepath: str) -> Dict[str, List[Dict]]:
+def load_and_filter_data(filepath: str) -> dict[str, list[dict]]:
     """
     Load NDJSON data and organize by datum_id.
     Returns a dictionary mapping datum_id to list of annotations.
@@ -37,7 +35,7 @@ def explode_annotation(annotation: dict, datum: dict) -> list[bool]:
     return [char["coref"] in annotation_corefs for char in datum["characters"]]
 
 
-def get_annotation_data(filepath: str) -> List[Dict]:
+def get_annotation_data(filepath: str) -> list[dict]:
     """
     Load NDJSON data and return a list of annotations, where each datum is
     represented once and has a completed annotation. If there are multiple,
@@ -73,7 +71,7 @@ def get_annotation_data(filepath: str) -> List[Dict]:
     return data
 
 
-def get_annotation_splits(data: List[Dict]) -> List[List[Dict]]:
+def get_annotation_splits(data: list[dict]) -> list[list[dict]]:
     """
     Split the data into train/dev/test in a 80/10/10 split.
     Should stratify by book_id.
