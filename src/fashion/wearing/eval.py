@@ -49,6 +49,8 @@ def prepare_batch(
         )
         for datum in batch_data
     ]
+    # discard any out of bounds spans
+    # TODO: fix this in upstream code
     batch_entity_spans = [
         [
             (
@@ -56,6 +58,9 @@ def prepare_batch(
                 char["character_end_idx"] - datum["excerpt_start"],
             )
             for char in datum["characters"]
+            if char["character_start_idx"] - datum["excerpt_start"] >= 0
+            and char["character_end_idx"] - datum["excerpt_start"]
+            <= len(datum["excerpt_text"])
         ]
         for datum in batch_data
     ]

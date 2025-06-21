@@ -3,21 +3,20 @@
 import argparse
 import json
 from pathlib import Path
-import subprocess
 
 import pandas as pd
 from tqdm import tqdm
 
-from fashion.sources import add_source_argument
+from fashion.distributed import add_distributed_args, run_distributed
+from fashion.paths import DATA_DIR
+from fashion.sources import Source, add_source_argument
 from fashion.span_utils import get_k_closest_spans
-from fashion.utils import DATA_DIR
 
 
-def main(book_ids, fashion_mention_file, booknlp_dir, data_source, output_dir, rank=0):
+def process_books(
+    book_ids, fashion_mention_file, booknlp_dir, data_source, output_dir, rank=0
+):
     fashion_mentions = pd.read_csv(fashion_mention_file)
-    # Index(['filename', 'sentence', 'term', 'start_idx', 'end_idx',
-    #    'sentence_start_idx', 'sentence_end_idx', 'label', 'confidence'],
-    #   dtype='object')
     fashion_mentions = fashion_mentions.set_index("filename")
 
     def fashion_character_cooc(book_id):
@@ -159,11 +158,42 @@ def main(book_ids, fashion_mention_file, booknlp_dir, data_source, output_dir, r
             f.write(f"{json.dumps(result)}\n")
 
 
+def main(
+    source: Source,
+    fashion_mention_file: Path,
+    booknlp_dir: Path,
+    output_dir: Path,
+    num_processes: int,
+    concurrent_processes: int,
+):
+    def process(subset: list[str]):
+        process_books(subset, fashion_mention_file, booknlp_dir, source, output_dir)
+
+    run_distributed(
+        process,
+        sorted(list(source.iter_book_ids())),
+        script_path=__file__,
+        total_processes=num_processes,
+        concurrent_processes=concurrent_processes,
+        extra_args=[
+            "--source",
+            str(source.name.lower()),
+            "--fashion_mention_file",
+            str(fashion_mention_file),
+            "--booknlp_dir",
+            str(booknlp_dir),
+            "--output_dir",
+            str(output_dir),
+        ],
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Extract co-occurrence of fashion items with character mentions in books."
     )
     add_source_argument(parser)
+    add_distributed_args(parser)
     parser.add_argument(
         "--fashion_mention_file",
         type=Path,
@@ -182,62 +212,13 @@ if __name__ == "__main__":
         default=DATA_DIR / "fashion_character_cooc",
         help="Directory to save the output co-occurrence data.",
     )
-    parser.add_argument(
-        "--rank",
-        type=int,
-        default=0,
-        help="Rank of the process (for distributed processing).",
-    )
-    parser.add_argument(
-        "--num_processes",
-        type=int,
-        default=4,
-        help="Total number of processes for distributed processing.",
-    )
     args = parser.parse_args()
 
-    book_ids = sorted(args.data_source.iter_book_ids())
-    # book_ids = ["00011711", "00020573"]
-
-    rank = args.rank
-    num_processes = args.num_processes
-    # start processes with other ranks
-    subprocesses = []
-    if rank == 0:
-        for i in range(1, num_processes):
-            proc = subprocess.Popen(
-                [
-                    "python",
-                    __file__,
-                    "--rank",
-                    str(i),
-                    "--num_processes",
-                    str(num_processes),
-                    "--data_source",
-                    str(args.data_source.name.lower()),
-                    "--fashion_mention_file",
-                    str(args.fashion_mention_file),
-                    "--booknlp_dir",
-                    str(args.booknlp_dir),
-                    "--output_dir",
-                    str(args.output_dir),
-                ]
-            )
-            subprocesses.append(proc)
-    # process texts for the current rank
     main(
-        book_ids[rank::num_processes],
+        source=args.source,
         fashion_mention_file=args.fashion_mention_file,
         booknlp_dir=args.booknlp_dir,
-        data_source=args.data_source,
         output_dir=args.output_dir,
-        rank=rank,
+        num_processes=args.num_processes,
+        concurrent_processes=args.concurrent_processes,
     )
-
-    # wait for all subprocesses to finish
-    if rank == 0:
-        for proc in subprocesses:
-            proc.wait()
-        print("All subprocesses finished.")
-    else:
-        print(f"Process {rank} finished processing texts.")

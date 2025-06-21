@@ -3,6 +3,7 @@ Use deberta fashion model to filter fashion-related texts.
 """
 
 import argparse
+from pathlib import Path
 
 import pandas as pd
 from datasets import Dataset
@@ -10,13 +11,13 @@ from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
 from scipy.special import softmax
 
-from fashion.train_classifier import (
+from fashion.filtering.train_classifier import (
     DataCollator,
     DataPreparer,
     DebertaV2ForSpanClassification,
     DebertaV2TokenizerFast,
 )
-from fashion.utils import DATA_DIR
+from fashion.paths import DATA_DIR
 
 
 def filter_fashion_texts(df) -> pd.DataFrame:
@@ -66,19 +67,32 @@ def filter_fashion_texts(df) -> pd.DataFrame:
     return df
 
 
+def main(input_file: Path, output_file: Path, max_rows: int | None = None):
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    df = pd.read_csv(input_file)
+    if max_rows is not None:
+        df = df.head(max_rows)
+    df_filtered = filter_fashion_texts(df)
+    df_filtered.to_csv(output_file, index=False)
+    print(
+        f"{df_filtered.shape[0] / df.shape[0]:.2%} of texts ({df_filtered.shape[0]} / {df.shape[0]}) are fashion-related."
+    )
+    print(f"Filtered results saved to {output_file}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Filter fashion-related texts using DeBERTa model."
     )
     parser.add_argument(
         "--input_file",
-        type=str,
+        type=Path,
         help="Path to the input CSV file containing texts.",
         default="fashion_results.csv",
     )
     parser.add_argument(
         "--output_file",
-        type=str,
+        type=Path,
         help="Path to save the filtered fashion-related texts.",
         default=DATA_DIR / "filtered_fashion_texts.csv",
     )
@@ -87,16 +101,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Load the input CSV file
-    df = pd.read_csv(args.input_file)
-    if args.max_rows is not None:
-        df = df.head(args.max_rows)
-
-    df_filtered = filter_fashion_texts(df)
-
-    # Save the filtered results to the output CSV file
-    df_filtered.to_csv(args.output_file, index=False)
-    print(
-        f"{df_filtered.shape[0] / df.shape[0]:.2%} of texts ({df_filtered.shape[0]} / {df.shape[0]}) are fashion-related."
-    )
-    print(f"Filtered results saved to {args.output_file}")
+    main(**vars(args))

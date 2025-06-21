@@ -14,3 +14,16 @@ pixi shell
 ```
 
 Python code belongs in `src/fashion`. You can run e.g. `process_texts.py` by calling `python -m fashion.process_texts`.
+
+
+## Pipeline:
+
+This repository contains a series of scripts which:
+
+1. Identify fashion mentions using a list of keywords (`process_texts.py`)
+2. Apply a deberta model to filter out some false positives (`filter_texts.py`)
+3. Run booknlp on the original texts (`characters.py`)
+4. Identify the entities present in passages with fashion mentions (`character_fashion_cooc.py`)
+5. Apply a deberta model to identify which entity in a passage is in possession of the mentioned article of clothing (`wearing/inference.py`)
+6. Extract sentences which mention entities that have been linked to clothing (`extract_entity_mentions.py`)
+7. Use dependency parsing to find adjectives which describe a particular noun (`extract_adjectives.py`)

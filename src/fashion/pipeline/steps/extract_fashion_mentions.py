@@ -8,6 +8,7 @@ import argparse
 import csv
 import re
 from collections import defaultdict
+from pathlib import Path
 
 import spacy
 from tqdm import tqdm
@@ -21,7 +22,7 @@ def strip_punctuation(text):
 
 
 def preprocess(doc):
-    # text = strip_punctuation(text)
+    # TODO: do faster sentence segmentation than spacy
     sentences = list(doc.sents)  # Split into sentences
     return sentences
 
@@ -72,11 +73,13 @@ def read_file(file_path):
 
 
 # Function to save the results to a CSV file
-def save_results_csv(fashion_results, output_filename):
+def save_results_csv(fashion_results, output_filename: Path):
+    output_filename.parent.mkdir(parents=True, exist_ok=True)
     with open(output_filename, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(
             [
+                "mention_id",
                 "filename",
                 "sentence",
                 "term",
@@ -87,6 +90,7 @@ def save_results_csv(fashion_results, output_filename):
             ]
         )  # Header row
 
+        mention_id = 0
         for filename, (sentences) in fashion_results.items():
             for sentence, indices, sentence_start, sentence_end in sentences:
                 for start, end in indices:
@@ -95,6 +99,7 @@ def save_results_csv(fashion_results, output_filename):
                     # Write the filename and the fashion term to the CSV file
                     writer.writerow(
                         [
+                            mention_id,
                             filename,
                             sentence,
                             fashion_term,
@@ -104,6 +109,7 @@ def save_results_csv(fashion_results, output_filename):
                             sentence_end,
                         ]
                     )
+                    mention_id += 1
 
 
 def load_texts(datasource: Source, max_files: int | None = None):
@@ -147,41 +153,17 @@ def load_texts(datasource: Source, max_files: int | None = None):
             else:
                 yield text.filename, chunk, chunk_start_idx
 
-        # current_chunk = ""
-        # chunk_start_idx = 0
-        # for chunk in content.split("\n\n"):
-        #     current_chunk += chunk + "\n\n"
-        #     if len(current_chunk) > 10000:
-        #         if len(current_chunk) - 10_000 > 10_000:
-        #             # if paragraph chunks are too long, split into smaller chunks naively
-        #             for i in range(0, len(current_chunk), 10_000):
-        #                 yield (
-        #                     text.filename,
-        #                     current_chunk[i : i + 10_000],
-        #                     chunk_start_idx,
-        #                 )
-        #                 chunk_start_idx += 10_000
-        #         else:
-        #             yield text.filename, current_chunk, chunk_start_idx
-        #             chunk_start_idx += len(current_chunk)
-        #         current_chunk = ""
-        # if current_chunk.strip():
-        #     yield text.filename, current_chunk, chunk_start_idx
 
-
-# Main function to process all files in a directory (limiting to first 3 files)
 def process_all_files(directory, max_files=None):
     fashion_results = defaultdict(list)
 
     nlp = spacy.load("en_core_web_sm")
-    # nlp.add_pipe("sentencizer")
     filenames, texts, chunk_start_idxs = zip(
         *load_texts(directory, max_files=max_files)
     )
     docs = nlp.pipe(texts, batch_size=64, n_process=32)
 
     extractor = NaiveKeywordExtractor()
-    # extractor = BertFashionExtractor()
 
     for filename, doc, chunk_start_idx in tqdm(
         zip(filenames, docs, chunk_start_idxs),
@@ -197,9 +179,9 @@ def process_all_files(directory, max_files=None):
     return fashion_results
 
 
-def main(data_source, max_files, output_filename):
+def main(source: Source, max_files, output_filename):
     # Load the text files from the specified directory
-    fashion_results = process_all_files(data_source, max_files)
+    fashion_results = process_all_files(source, max_files)
 
     # Save the results to a CSV file
     save_results_csv(fashion_results, output_filename)
@@ -211,7 +193,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     add_source_argument(parser)
     parser.add_argument("--max_files", type=int, default=None)
-    parser.add_argument("--output_filename", type=str, default="fashion_results.csv")
+    parser.add_argument("--output_filename", type=Path, default="fashion_results.csv")
 
     args = parser.parse_args()
     main(**vars(args))

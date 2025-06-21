@@ -9,7 +9,7 @@ from typing import Iterator
 
 import pandas as pd
 
-from fashion.utils import CHICAGO_PATH, CONTEMP_LITBANK_PATH, DATA_DIR, LITBANK_PATH
+from fashion.paths import CHICAGO_PATH, CONTEMP_LITBANK_PATH, DATA_DIR, LITBANK_PATH
 
 
 @dataclass
@@ -21,7 +21,7 @@ class Text:
 
 
 class Source:
-    name: str | None = None
+    name: str
 
     def __init__(self):
         pass
@@ -46,12 +46,12 @@ class TextDir(Source):
 
     def iter_texts(self):
         for file in self.files:
-            with open(file, "r") as f:
+            with open(file, "r", encoding="utf-8") as f:
                 yield Text(file.name, file.stem, f.read(), str(file))
 
     def load_text(self, book_id: str) -> Text:
         book_path = self.path / f"{book_id}.txt"
-        with open(book_path, "r") as f:
+        with open(book_path, "r", encoding="utf-8") as f:
             return Text(book_id, book_id, f.read(), str(book_path))
 
     def iter_book_ids(self):
@@ -76,6 +76,14 @@ class LitBank(TextDir):
         super().__init__(path)
 
 
+class Debug(TextDir):
+    name = "Debug"
+
+    def __init__(self, path: Path = LITBANK_PATH):
+        super().__init__(path)
+        self.files = self.files[:5]
+
+
 class ContempLitBank(TextDir):
     name = "Contemp"
 
@@ -94,12 +102,12 @@ class HathiTrust:
     def iter_texts(self):
         for filepath in self.filepaths:
             filepath = Path(filepath)
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 yield Text(filepath.name, filepath.stem, f.read(), str(filepath))
 
     def load_text(self, book_id: str) -> Text:
         filepath = self.id_lookup[book_id]
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             return Text(filepath.name, book_id, f.read(), str(filepath))
 
     def iter_book_ids(self):
@@ -110,7 +118,10 @@ class HathiTrust:
 
 
 def add_source_argument(parser: argparse.ArgumentParser):
-    sources = [Chicago, LitBank, ContempLitBank, HathiTrust]
+    """
+    --source: Source of the data to process (chicago, litbank, contemp, hathitrust, debug)
+    """
+    sources = [Chicago, LitBank, ContempLitBank, HathiTrust, Debug]
     source_map = {source.name.lower(): source for source in sources}
 
     def load_source(source_name: str) -> Source:
@@ -126,7 +137,7 @@ def add_source_argument(parser: argparse.ArgumentParser):
             setattr(namespace, self.dest, load_source(values))
 
     parser.add_argument(
-        "--data_source",
+        "--source",
         action=SourceAction,
         default="litbank",
         choices=source_map.keys(),

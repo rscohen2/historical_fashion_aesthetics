@@ -27,7 +27,7 @@ from transformers.models.deberta_v2.tokenization_deberta_v2_fast import (
 from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
 
-from fashion.utils import DATA_DIR
+from fashion.paths import DATA_DIR
 
 
 class SpanContextPooler(nn.Module):
