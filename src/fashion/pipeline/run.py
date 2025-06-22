@@ -50,7 +50,7 @@ def main(source: Source):
     #     source,
     #     num_processes=1,
     #     concurrent_processes=1,
-    #     output_dir=output_dir / "booknlp",
+    #     output_dir=DATA_DIR / "booknlp",
     # )
 
     # # 4. Identify the entities present in passages with fashion mentions
@@ -58,7 +58,7 @@ def main(source: Source):
     # extract_char_fashion_mentions(
     #     source=source,
     #     fashion_mention_file=output_dir / "fashion_mentions" / "filtered.csv",
-    #     booknlp_dir=output_dir / "booknlp",
+    #     booknlp_dir=DATA_DIR / "booknlp",
     #     output_dir=output_dir / "character_fashion_cooc",
     #     num_processes=1,
     #     concurrent_processes=1,
@@ -75,24 +75,24 @@ def main(source: Source):
     # )
 
     # 6. Extract sentences which mention entities that have been linked to clothing
-    print(
-        "Extracting sentences which mention entities that have been linked to clothing..."
-    )
-    extract_entity_mentions(
-        source=source,
-        wearing_dir=output_dir / "wearing",
-        booknlp_dir=output_dir / "booknlp",
-        output_dir=output_dir / "entity_mentions",
-        num_processes=1,
-        concurrent_processes=1,
-    )
+    # print(
+    #     "Extracting sentences which mention entities that have been linked to clothing..."
+    # )
+    # extract_entity_mentions(
+    #     source=source,
+    #     wearing_dir=output_dir / "wearing",
+    #     booknlp_dir=DATA_DIR / "booknlp",
+    #     output_dir=output_dir / "entity_mentions",
+    #     num_processes=1,
+    #     concurrent_processes=1,
+    # )
 
     # 7. Use dependency parsing to find adjectives which describe a particular noun
     print("Extracting adjectives which describe fashion mentions...")
     extract_adjectives(
         noun_mention_dir=output_dir / "fashion_mentions",
-        output_dir=output_dir / "adjectives",
-        num_processes=1,
+        output_dir=output_dir / "adjectives/fashion/",
+        num_processes=4,
         concurrent_processes=1,
         do_coref=True,
     )
@@ -100,8 +100,8 @@ def main(source: Source):
     print("Extracting adjectives which describe entity mentions...")
     extract_adjectives(
         noun_mention_dir=output_dir / "entity_mentions",
-        output_dir=output_dir / "adjectives",
-        num_processes=1,
+        output_dir=output_dir / "adjectives/entities/",
+        num_processes=16,
         concurrent_processes=1,
         do_coref=True,
     )
