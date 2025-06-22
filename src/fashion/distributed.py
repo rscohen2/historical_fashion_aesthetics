@@ -1,5 +1,6 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import gc
 import inspect
 import os
 from pathlib import Path
@@ -52,7 +53,17 @@ def run_distributed(
 
     rank = int(os.environ.get("DISTRIBUTED_RANK", "0"))
 
+    def execute_work(rank: int):
+        """Execute the work for a given rank."""
+        subset = items[rank::total_processes]
+        output = process_fn(subset)
+        # free up GPU memory
+        gc.collect()
+        torch.cuda.empty_cache()
+        return output
+
     def spawn_process(rank: int):
+        """Spawn a subprocess for the given rank."""
         proc = subprocess.Popen(
             [
                 "pixi",
@@ -78,16 +89,23 @@ def run_distributed(
         return rank
 
     if rank == 0:
+        # Run all processes including rank 0 in parallel
         with ThreadPoolExecutor(max_workers=concurrent_processes) as executor:
-            futures = [
-                executor.submit(spawn_process, i) for i in range(1, total_processes)
+            # Only processes with rank > 0 execute the script
+            # Rank 0 only serves to call and track the subprocesses
+            # This ensures that processes get cleaned up completely when they
+            # finish.
+            all_futures = [
+                executor.submit(spawn_process, i) for i in range(1, total_processes + 1)
             ]
+
+            # Wait for all processes including rank 0
             with tqdm(
                 total=total_processes,
                 desc=f"{Path(script_path).name} ({pixi_env})",
             ) as pbar:
-                for _ in as_completed(futures):
+                for _ in as_completed(all_futures):
                     pbar.update(1)
-
-    subset = items[rank::total_processes]
-    process_fn(subset)
+    else:
+        # Non-rank 0 processes just run their work
+        execute_work(rank - 1)

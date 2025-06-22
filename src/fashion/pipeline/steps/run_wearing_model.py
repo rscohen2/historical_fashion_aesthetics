@@ -63,6 +63,9 @@ def main(
                 for entry in output_data:
                     f.write(json.dumps(entry) + "\n")
 
+            # free up memory
+            del wearing_model
+
     run_distributed(
         process,
         sorted(list(fashion_cooc_dir.glob("*.ndjson"))),

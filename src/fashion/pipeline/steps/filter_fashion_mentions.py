@@ -64,6 +64,9 @@ def filter_fashion_texts(df) -> pd.DataFrame:
     df["confidence"] = confidence_scores
     df = df[labels == 1]  # Filter only fashion-related texts
 
+    # Free up memory
+    del model, trainer, data_preparer, eval_dataset, test_args
+
     return df
 
 

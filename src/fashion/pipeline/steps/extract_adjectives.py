@@ -1,9 +1,9 @@
 import argparse
 import itertools
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-import os
 
 import pandas as pd
 import stanza
@@ -168,6 +168,7 @@ class StanzaProcessor(Processor):
     def __del__(self):
         if hasattr(self, "semgrex") and self.semgrex is not None:
             self.semgrex.__exit__(None, None, None)
+        del self.nlp
 
     def get_word(self, doc, i, j):
         word = doc.sentences[i].words[j]
@@ -320,13 +321,13 @@ def test():
 
 def process_file(mentions: pd.DataFrame, output_file: Path, do_coref: bool):
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    if output_file.exists():
-        print(f"Output file {output_file} already exists. Skipping.")
-        return
     rows = list(mentions.itertuples())
 
     results = []
     processor = StanzaProcessor(do_coref)
+    if output_file.exists():
+        print(f"Output file {output_file} already exists. Skipping.")
+        return
     batch_size = 8
     for batch in tqdm(
         itertools.batched(rows, batch_size),
@@ -381,6 +382,9 @@ def process_file(mentions: pd.DataFrame, output_file: Path, do_coref: bool):
     if results:
         df = pd.DataFrame(results)
         df.to_csv(output_file, index=False)
+
+    # free up memory
+    del processor
 
 
 def main(

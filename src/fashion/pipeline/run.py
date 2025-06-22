@@ -105,7 +105,7 @@ class PipelineConfig:
         }
 
         with open(yaml_path, "w") as f:
-            yaml.dump(data, f, default_flow_style=False, indent=2)
+            yaml.dump(data, f, default_flow_style=False, indent=2, sort_keys=False)
 
 
 def create_default_yaml_config(output_path: Path):
