@@ -312,10 +312,6 @@ if __name__ == "__main__":
 
     config = create_config_from_args(args)
     main(
-        **{
-            k: v
-            for k, v in vars(args).items()
-            if k not in ["steps", "config", "create_config"]
-        },
+        source=args.source,
         config=config,
     )
