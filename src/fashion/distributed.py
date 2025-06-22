@@ -46,6 +46,7 @@ def run_distributed(
             )
         script_path = inspect.getfile(current_frame.f_back)
 
+    total_processes = min(total_processes, len(items))
     if concurrent_processes <= 0:
         concurrent_processes = total_processes
 
