@@ -61,6 +61,10 @@ def run_distributed(
                 pixi_env,
                 "python",
                 script_path,
+                "--num_processes",
+                str(total_processes),
+                "--concurrent_processes",
+                str(concurrent_processes),
             ]
             + extra_args,
             env={
