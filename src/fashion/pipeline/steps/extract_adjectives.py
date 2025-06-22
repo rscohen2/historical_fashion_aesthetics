@@ -1,7 +1,9 @@
 import argparse
-from collections import defaultdict, namedtuple
 import itertools
+from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
+import os
 
 import pandas as pd
 import stanza
@@ -12,73 +14,173 @@ from tqdm import tqdm
 from fashion.distributed import add_distributed_args, run_distributed
 from fashion.span_utils import get_overlap_rows_single
 
-Word = namedtuple("Word", ["start_idx", "end_idx", "text"])
-Pair = namedtuple("Pair", ["adjective", "noun", "corefs", "negated"])
+
+@dataclass
+class Span:
+    start_idx: int
+    end_idx: int
+    text: str
+    corefs: set["Span"] = field(default_factory=set)
+
+    def __hash__(self):
+        return hash((self.start_idx, self.end_idx, self.text))
+
+    def __str__(self):
+        return self.text
+
+    def __repr__(self):
+        return self.text
 
 
-def process_batch(
-    nlp: stanza.Pipeline, lines: list[str], do_coref: bool
-) -> list[set[Pair]]:
-    def get_word(doc, word) -> Word:
-        i, j = word
-        word = doc.sentences[i].words[j]
-        return Word(word.start_char, word.end_char, word.text)
-        # return doc.sentences[i].words[j].text
+@dataclass
+class AdjectivePair:
+    adjective: Span
+    noun: Span
+    negated: bool
 
-    def get_compound(doc, compounds, word):
-        # build compound string
-        output = [word]
-        while word in compounds:
-            word = compounds[word]
-            output.append(word)
-        start_tok = output[-1]
-        end_tok = output[0]
-        start_idx = get_word(doc, start_tok).start_idx
-        end_idx = get_word(doc, end_tok).end_idx
-        return Word(
-            start_idx,
-            end_idx,
-            " ".join([get_word(doc, word).text for word in output[::-1]]),
-        )
+    @property
+    def corefs(self):
+        return self.noun.corefs
 
-    def get_corefs(doc, compounds, word, coref_dict, coref_spans):
-        corefs = set()
-        for chain_id in coref_dict[word]:
-            corefs.add(chain_id)
-        while word in compounds:
-            word = compounds[word]
-            for chain_id in coref_dict[word]:
-                corefs.add(chain_id)
-        corefs = sorted(corefs)
+    def __hash__(self):
+        return hash((self.adjective, self.noun))
 
-        return tuple(
-            set(
-                [
-                    get_word(doc, coref_span)
-                    for coref in corefs
-                    for coref_span in coref_spans[coref]
-                ]
+
+@dataclass
+class Node:
+    name: str
+    span: Span
+
+    def __hash__(self):
+        return hash(self.span)
+
+
+@dataclass
+class Match:
+    nodes: list[Node]
+    reln: list[str]
+
+
+def get_compound(compounds: dict[Span, Span], word: Span) -> Span:
+    # build compound string
+    output = [word]
+    while word in compounds:
+        word = compounds[word]
+        output.append(word)
+    start_tok = output[-1]
+    end_tok = output[0]
+    start_idx = start_tok.start_idx
+    end_idx = end_tok.end_idx
+    return Span(
+        start_idx,
+        end_idx,
+        " ".join([word.text for word in output[::-1]]),
+        start_tok.corefs | end_tok.corefs,
+    )
+
+
+def create_pairs(
+    matches: list[Match], corefs: dict | None = None
+) -> set[AdjectivePair]:
+    pairs = set()
+    description: dict[Span, Span] = {}
+    compound: dict[Span, Span] = {}
+    conj: dict[Span, Span] = {}
+
+    negations = set()
+    for match in matches:
+        match_dict: dict[str, Span] = {}
+        relname = match.reln[0]
+        for node in match.nodes:
+            match_dict[node.name] = node.span
+        if relname == "adj":
+            description[match_dict["adjective"]] = match_dict["noun"]
+        elif relname == "compound":
+            compound[match_dict["second_noun"]] = match_dict["first_noun"]
+        elif relname == "conj":
+            conj[match_dict["adjective"]] = match_dict["second_adjective"]
+        elif relname == "xcomp":
+            description[match_dict["adjective"]] = match_dict["noun"]
+        elif relname == "not":
+            negations.add(match_dict["adjective"])
+
+    for adj in description:
+        negation = adj in negations
+        noun = get_compound(compound, description[adj])
+        pairs.add(
+            AdjectivePair(
+                adjective=adj,
+                noun=noun,
+                negated=negation,
             )
         )
 
-    in_docs = [stanza.Document([], text=d.strip()) for d in lines]
-    docs = nlp(in_docs)
+    for adj in conj:
+        if conj[adj] not in description:
+            continue
+        negation = adj in negations or conj[adj] in negations
+        noun = get_compound(compound, description[conj[adj]])
+        pairs.add(
+            AdjectivePair(
+                adjective=adj,
+                noun=noun,
+                negated=negation,
+            )
+        )
+    return pairs
 
-    def get_coref_spans(corefs):
-        coref_spans = defaultdict(list)
-        for (sent_id, word_id), chain_ids in corefs.items():
-            for chain_id in chain_ids:
-                coref_spans[chain_id].append((sent_id, word_id))
-        return coref_spans
 
-    def get_coref_from_chains(doc, do_coref):
-        corefs = defaultdict(list)
+class Processor:
+    """What to use for parsing the dependency tree."""
+
+    do_coref: bool = False
+
+    def __init__(self, do_coref: bool = False):
+        self.do_coref = do_coref
+
+    def match_batch(self, lines: list[str]) -> list[list[Match]]:
+        """Process a batch of documents."""
+        raise NotImplementedError
+
+
+class StanzaProcessor(Processor):
+    """Use Stanza for parsing the dependency tree."""
+
+    def __init__(self, do_coref: bool = False):
+        super().__init__(do_coref)
+        self.nlp = stanza.Pipeline(
+            "en",
+            processors="tokenize,pos,lemma,depparse"
+            + (",coref" if self.do_coref else ""),
+        )
+        self.patterns = [
+            "{cpos:ADJ}=adjective <amod=adj {pos:/NN.*|PRP/}=noun",
+            "{cpos:ADJ}=adjective >nsubj=adj {pos:/NN.*|PRP/}=noun",
+            "{cpos:ADJ}=adjective </acl.*/=adj {pos:/NN.*|PRP/}=noun",
+            "{cpos:VERB}=link >xcomp=xcomp {cpos:ADJ}=adjective >obj {pos:/NN.*|PRP/}=noun",
+            "{pos:/NN.*|PRP/}=first_noun <compound=compound {pos:/NN.*|PRP/}=second_noun",
+            "{cpos:ADJ}=adjective <conj=conj {cpos:ADJ}=second_adjective",
+            "{lemma:not}=not <advmod=not {cpos:ADJ}=adjective",
+        ]
+        self.semgrex = Semgrex()
+        self.semgrex.__enter__()
+
+    def __del__(self):
+        if hasattr(self, "semgrex") and self.semgrex is not None:
+            self.semgrex.__exit__(None, None, None)
+
+    def get_word(self, doc, i, j):
+        word = doc.sentences[i].words[j]
+        return word
+
+    def get_coref_from_chains(self, doc) -> dict[tuple[int, int], int]:
+        corefs = {}
         index = 0
         for sent_id, sentence in enumerate(doc.sentences):
             for word_id, word in enumerate(sentence.words):
                 # only take the minimal coref.
-                if not do_coref:
-                    corefs[(sent_id, word_id)].append(index)
+                if not self.do_coref:
+                    corefs[(sent_id, word_id)] = index
                     index += 1
                     continue
                 min_chain = min(
@@ -88,106 +190,95 @@ def process_batch(
                 )
                 if min_chain is None:
                     continue
-                corefs[(sent_id, word_id)].append(min_chain.chain.index)
+                corefs[(sent_id, word_id)] = min_chain.chain.index
         return corefs
 
-    def process_doc(doc):
-        pairs = set()
-        description = dict()
-        compound = dict()
-        conj = dict()
-
-        corefs = get_coref_from_chains(doc, do_coref)
-        coref_spans = get_coref_spans(corefs)
-
-        matches = sem.process(
-            doc,
-            "{cpos:ADJ}=adjective <amod=adj {pos:/NN.*|PRP/}=noun",
-            "{cpos:ADJ}=adjective >nsubj=adj {pos:/NN.*|PRP/}=noun",
-            "{cpos:ADJ}=adjective </acl.*/=adj {pos:/NN.*|PRP/}=noun",
-            "{cpos:VERB}=link >xcomp=xcomp {cpos:ADJ}=adjective >obj {pos:/NN.*|PRP/}=noun",
-            "{pos:/NN.*|PRP/}=first_noun <compound=compound {pos:/NN.*|PRP/}=second_noun",
-            "{cpos:ADJ}=adjective <conj=conj {cpos:ADJ}=second_adjective",
-            "{lemma:not}=not <advmod=not {cpos:ADJ}=adjective",
-        )
-        matches = json_format.MessageToDict(matches)
-        # print(matches)
-        negations = set()
-        for i, result in enumerate(matches["result"]):
-            for match in result["result"]:
-                if "match" not in match:
-                    continue
-                for m in match["match"]:
-                    match_dict = {}
-                    relname = m["reln"][0]["name"]
-                    for node in m["node"]:
-                        match_dict[node["name"]] = (
-                            i,
-                            node["matchIndex"] - 1,
-                        )  # (sentence_idx, word_idx)
-                    if relname == "adj":
-                        description[match_dict["adjective"]] = match_dict["noun"]
-                    elif relname == "compound":
-                        compound[match_dict["second_noun"]] = match_dict["first_noun"]
-                    elif relname == "conj":
-                        conj[match_dict["adjective"]] = match_dict["second_adjective"]
-                    elif relname == "xcomp":
-                        description[match_dict["adjective"]] = match_dict["noun"]
-                    elif relname == "not":
-                        negations.add(match_dict["adjective"])
-
-        for adj in description:
-            negation = adj in negations
-            pairs.add(
-                Pair(
-                    get_word(doc, adj),
-                    get_compound(doc, compound, description[adj]),
-                    get_corefs(doc, compound, description[adj], corefs, coref_spans),
-                    negation,
-                )
+    def get_coref_spans(
+        self, doc, corefs: dict[tuple[int, int], int]
+    ) -> dict[int, set[Span]]:
+        coref_spans = defaultdict(set)
+        for (sent_id, word_id), chain_id in corefs.items():
+            word = self.get_word(doc, sent_id, word_id)
+            span = Span(
+                start_idx=word.start_char,
+                end_idx=word.end_char,
+                text=word.text,
             )
-        for adj in conj:
-            if conj[adj] not in description:
-                continue
-            negation = adj in negations or conj[adj] in negations
-            pairs.add(
-                Pair(
-                    get_word(doc, adj),
-                    get_compound(doc, compound, description[conj[adj]]),
-                    get_corefs(
-                        doc, compound, description[conj[adj]], corefs, coref_spans
-                    ),
-                    negation,
-                )
+            coref_spans[chain_id].add(span)
+        return coref_spans
+
+    def match_batch(self, lines: list[str]) -> list[list[Match]]:
+        in_docs = [stanza.Document([], text=d.strip()) for d in lines]
+        docs = self.nlp(in_docs)
+
+        matches: list[list[Match]] = []
+        for doc in docs:
+            stanza_matches = self.semgrex.process(
+                doc,
+                *self.patterns,
             )
-        return pairs
+            stanza_matches = json_format.MessageToDict(stanza_matches)
+            doc_matches: list[Match] = []
 
-    with Semgrex() as sem:
-        outputs = list(map(process_doc, docs))
+            for sentence_ind, result in enumerate(stanza_matches["result"]):
+                for match in result["result"]:
+                    if "match" not in match:
+                        continue
+                    for m in match["match"]:
+                        relname = m["reln"][0]["name"]
 
-    return outputs
+                        corefs = self.get_coref_from_chains(doc)
+                        coref_spans = self.get_coref_spans(doc, corefs)
+
+                        nodes = []
+                        for stanza_node in m["node"]:
+                            stanza_word = self.get_word(
+                                doc, sentence_ind, stanza_node["matchIndex"] - 1
+                            )
+                            if (sentence_ind, stanza_node["matchIndex"] - 1) in corefs:
+                                node_corefs = coref_spans[
+                                    corefs[
+                                        (sentence_ind, stanza_node["matchIndex"] - 1)
+                                    ]
+                                ]
+                            else:
+                                node_corefs = set()
+                            node = Node(
+                                name=stanza_node["name"],
+                                span=Span(
+                                    start_idx=stanza_word.start_char,
+                                    end_idx=stanza_word.end_char,
+                                    text=stanza_word.text,
+                                    corefs=node_corefs,
+                                ),
+                            )
+                            nodes.append(node)
+
+                        doc_matches.append(Match(nodes, [relname]))
+            matches.append(doc_matches)
+        return matches
 
 
 def test():
-    nlp = stanza.Pipeline("en", processors="tokenize,pos,lemma,depparse,coref")
+    processor = StanzaProcessor(do_coref=True)
     test_batch = [
-        # "The red dress is beautiful. The blue shoes are ugly.",
-        # "The red dress is beautiful.",
-        # "I love the blue shoes and the green hat.",
-        # "She wore a stylish black jacket with a white shirt.",
-        # "Lily found herself confused and sad.",
-        # "This is the wonderful, talented Michelle.",
-        # "Sam, my sad brother, arrived.",
-        # "Sam, who was sad, arrived.",
-        # "Lauren was wonderful.",
-        # "Lauren was a wonderful student.",
-        # "The horse rider was lovely.",
-        # "Lauren and Bob are happy.",
-        # "I feel happy.",
-        # "I'm so pretty and witty and bright.",
-        # "I am not happy.",
-        # "Charles' red dress is beautiful, but it is a little dirty. He is sad.",
-        #         "The dress being worn by the woman is beautiful, but it is a little dirty. She is sad.",
+        "Lily found herself confused and sad.",
+        "The red dress is beautiful. The blue shoes are ugly.",
+        "The red dress is beautiful.",
+        "I love the blue shoes and the green hat.",
+        "She wore a stylish black jacket with a white shirt.",
+        "This is the wonderful, talented Michelle.",
+        "Sam, my sad brother, arrived.",
+        "Sam, who was sad, arrived.",
+        "Lauren was wonderful.",
+        "Lauren was a wonderful student.",
+        "The horse rider was lovely.",
+        "Lauren and Bob are happy.",
+        "I feel happy.",
+        "I'm so pretty and witty and bright.",
+        "I am not happy.",
+        "Charles' red dress is beautiful, but it is a little dirty. He is sad.",
+        # "The dress being worn by the woman is beautiful, but it is a little dirty. She is sad.",
         #         """He
         # was smoking a cheap cigarette and wore the same soft felt hat he had
         # worn all last winter.""",
@@ -218,21 +309,16 @@ def test():
         # "In what ultimate ambition had all concurrent and consecutive ambitions\nnow coalesced?\n\nNot to inherit by right of primogeniture, gavelkind or borough English,\nor possess in perpetuity an extensive demesne of a sufficient number\nof acres, roods and perches, statute land measure (valuation £ 42), of\ngrazing turbary surrounding a baronial hall with gatelodge and carriage\ndrive nor, on the other hand, a terracehouse or semidetached villa,\ndescribed as Rus in Urbe or Qui si sana, but to purchase by private\ntreaty in fee simple a thatched bungalowshaped 2 storey dwellinghouse of\nsoutherly aspect, surmounted by vane and lightning conductor, connected\nwith the earth, with porch covered by parasitic plants (ivy or Virginia\ncreeper), halldoor, olive green, with smart carriage finish and neat\ndoorbrasses, stucco front with gilt tracery at eaves and gable, rising,\nif possible, upon a gentle eminence with agreeable prospect from balcony\nwith stone pillar parapet over unoccupied and unoccupyable interjacent\npastures and standing in 5 or 6 acres of its own ground, at such\na distance from the nearest public thoroughfare as to render its\nhouselights visible at night above and through a quickset hornbeam hedge\nof topiary cutting, situate at a given point not less than 1 statute\nmile from the periphery of the metropolis, within a time limit of not\nmore than 15 minutes from tram or train line (e.g., Dundrum, south, or\nSutton, north, both localities equally reported by trial to resemble the\nterrestrial poles in being favourable climates for phthisical subjects),\nthe premises to be held under feefarm grant, lease 999 years, the\nmessuage to consist of 1 drawingroom with baywindow (2 lancets),\nthermometer affixed, 1 sittingroom, 4 bedrooms, 2 servants’ rooms,\ntiled kitchen with close range and scullery, lounge hall fitted\nwith linen wallpresses, fumed oak sectional bookcase containing the\nEncyclopaedia Britannica and New Century Dictionary, transverse obsolete\nmedieval and oriental weapons, dinner gong, alabaster lamp, bowl\npendant, vulcanite automatic telephone receiver with adjacent directory,\nhandtufted Axminster carpet with cream ground and trellis border, loo\ntable with pillar and claw legs, hearth with massive firebrasses and\normolu mantel chronometer clock, guaranteed timekeeper with cathedral\nchime, barometer with hygrographic chart, comfortable lounge settees and\ncorner fitments, upholstered in ruby plush with good springing and sunk\ncentre, three banner Japanese screen and cuspidors (club style, rich\nwinecoloured leather, gloss renewable with a minimum of labour by use of\nlinseed oil and vinegar) and pyramidically prismatic central chandelier\nlustre, bentwood perch with fingertame parrot (expurgated language),\nembossed mural paper at 10/- per dozen with transverse swags of carmine\nfloral design and top crown frieze, staircase, three continuous flights\nat successive right angles, of varnished cleargrained oak, treads\nand risers, newel, balusters and handrail, with steppedup panel dado,\ndressed with camphorated wax: bathroom, hot and cold supply, reclining\nand shower: water closet on mezzanine provided with opaque singlepane\noblong window, tipup seat, bracket lamp, brass tierod and brace,\narmrests, footstool and artistic oleograph on inner face of door:\nditto, plain: servants’ apartments with separate sanitary and hygienic\nnecessaries for cook, general and betweenmaid (salary, rising by\nbiennial unearned increments of £ 2, with comprehensive fidelity\ninsurance, annual bonus (£ 1) and retiring allowance (based on the\n65 system) after 30 years’ service), pantry, buttery, larder,\nrefrigerator, outoffices, coal and wood cellarage with winebin (still\nand sparkling vintages) for distinguished guests, if entertained to\ndinner (evening dress), carbon monoxide gas supply throughout.\n\n",
     ]
 
-    outputs = process_batch(nlp, test_batch, do_coref=True)
-    for i, output in enumerate(outputs):
+    matches = processor.match_batch(test_batch)
+    for i, doc_matches in enumerate(matches):
+        pairs = create_pairs(doc_matches)
         print(test_batch[i])
-        for pair in output:
-            negation = " (negated)" if pair.negated else ""
-            print(
-                f"  Adjective: {pair.adjective.text} ({pair.adjective.start_idx}-{pair.adjective.end_idx}), "
-                f"Noun: {pair.noun.text} ({pair.noun.start_idx}-{pair.noun.end_idx}){negation}"
-            )
-            print("Corefs:", [coref.text for coref in pair.corefs])
+        for pair in pairs:
+            print(pair)
         print()
 
 
-def process_file(noun_mention_file: Path, output_file: Path, do_coref: bool):
-    mentions = pd.read_csv(noun_mention_file)
+def process_file(mentions: pd.DataFrame, output_file: Path, do_coref: bool):
     output_file.parent.mkdir(parents=True, exist_ok=True)
     if output_file.exists():
         print(f"Output file {output_file} already exists. Skipping.")
@@ -240,9 +326,7 @@ def process_file(noun_mention_file: Path, output_file: Path, do_coref: bool):
     rows = list(mentions.itertuples())
 
     results = []
-    nlp = stanza.Pipeline(
-        "en", processors="tokenize,pos,lemma,depparse" + (",coref" if do_coref else "")
-    )
+    processor = StanzaProcessor(do_coref)
     batch_size = 8
     for batch in tqdm(
         itertools.batched(rows, batch_size),
@@ -254,9 +338,10 @@ def process_file(noun_mention_file: Path, output_file: Path, do_coref: bool):
             for mention in batch
             if len(str(mention.sentence)) < 1200
         ]
-        outputs = process_batch(nlp, batch_texts, do_coref)
+        matches = processor.match_batch(batch_texts)
+        pairs = [create_pairs(doc_matches) for doc_matches in matches]
 
-        for mention, pairs in zip(batch, outputs):
+        for mention, pairs in zip(batch, pairs):
             if not pairs:
                 continue
             pairs = list(pairs)
@@ -305,17 +390,26 @@ def main(
     concurrent_processes: int,
     do_coref: bool,
 ):
-    def process(subset: list[Path]):
-        for noun_mention_file in subset:
-            process_file(
-                noun_mention_file,
-                output_dir / f"{noun_mention_file.stem}.csv",
-                do_coref,
-            )
+    def process(subset: list[dict]):
+        print(f"Processing {len(subset)} files.")
+        mentions = pd.DataFrame(subset)
+        rank = int(os.environ.get("DISTRIBUTED_RANK", "0"))
+        process_file(
+            mentions,
+            output_dir / f"adjectives.{rank}.csv",
+            do_coref,
+        )
+
+    mentions = pd.concat(
+        [
+            pd.read_csv(noun_mention_file)
+            for noun_mention_file in sorted(list(noun_mention_dir.glob("*.csv")))
+        ]
+    ).to_dict(orient="records")
 
     run_distributed(
         process,
-        sorted(list(noun_mention_dir.glob("*.csv"))),
+        mentions,
         script_path=__file__,
         total_processes=num_processes,
         concurrent_processes=concurrent_processes,
