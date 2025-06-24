@@ -55,10 +55,11 @@ def process_books(
 
         results = []
 
-        for start_idx, end_idx, term in zip(
+        for start_idx, end_idx, term, mention_id in zip(
             fashion_mentions_book.start_idx + fashion_mentions_book.sentence_start_idx,
             fashion_mentions_book.end_idx + fashion_mentions_book.sentence_start_idx,
             fashion_mentions_book.term,
+            fashion_mentions_book.mention_id,
         ):
             # get the fashion term span
             fashion_span = (start_idx, end_idx)
@@ -114,6 +115,7 @@ def process_books(
 
             result = {
                 "book_id": book_id,
+                "mention_id": mention_id,
                 "fashion_term": term,
                 "fashion_start_idx": start_idx,
                 "fashion_end_idx": end_idx,

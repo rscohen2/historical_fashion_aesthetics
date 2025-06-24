@@ -23,6 +23,7 @@ from fashion.pipeline.steps.extract_fashion_mentions import (
 from fashion.pipeline.steps.filter_fashion_mentions import (
     main as filter_fashion_mentions,
 )
+from fashion.pipeline.steps.finalize_outputs import finalize_outputs
 from fashion.pipeline.steps.run_booknlp import run_in_env as run_booknlp
 from fashion.pipeline.steps.run_wearing_model import main as run_wearing_model
 from fashion.sources import Source, add_source_argument
@@ -71,6 +72,9 @@ class PipelineConfig:
                 ),
                 "extract_entity_adjectives": StepConfig(
                     enabled=True, num_processes=16, concurrent_processes=1
+                ),
+                "finalize_outputs": StepConfig(
+                    enabled=True, num_processes=1, concurrent_processes=1
                 ),
             }
         )
@@ -214,6 +218,18 @@ def main(source: Source, config: PipelineConfig | None = None):
             do_coref=True,
         )
 
+    # 8. Finalize outputs
+    if config.steps["finalize_outputs"].enabled:
+        print("Finalizing outputs...")
+        step_config = config.steps["finalize_outputs"]
+        finalize_outputs(
+            fashion_mention_file=output_dir / "fashion_mentions" / "filtered.csv",
+            adjective_dir=output_dir / "adjectives",
+            wearing_dir=output_dir / "wearing",
+            booknlp_dir=DATA_DIR / "booknlp",
+            output_dir=output_dir,
+        )
+
 
 def add_pipeline_args(parser: argparse.ArgumentParser):
     """Add pipeline configuration arguments to the parser."""
@@ -237,6 +253,7 @@ def add_pipeline_args(parser: argparse.ArgumentParser):
             "extract_entity_mentions",
             "extract_fashion_adjectives",
             "extract_entity_adjectives",
+            "finalize_outputs",
         ],
         help="Specific steps to run (default: all steps)",
     )
@@ -251,6 +268,7 @@ def add_pipeline_args(parser: argparse.ArgumentParser):
         "extract_entity_mentions",
         "extract_fashion_adjectives",
         "extract_entity_adjectives",
+        "finalize_outputs",
     ]:
         parser.add_argument(
             f"--{step}-processes",
