@@ -306,6 +306,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/a3/de/c648ef6835192e6e2cc03f40b19eeda4382c49b5bafb43d88b931c4c74ac/google_pasta-0.2.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/49/9d/e12ddc726dc8bd1aa6cba67c85ce42a12ba5b9dd75d5042214a59ccf28ce/grpcio-1.71.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a7/da/3c137006ff5f0433f0fb076b1ebe4a7bf7b5ee1e8811b5486af98b500dd5/h5py-3.13.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/5e/cc/c500408bb33e6e455f52dd07a5fbe651f439017210bb43fd54d74c8af818/ht_text_prep-1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a2/3d/023389198f69c722d039351050738d6755376c8fd343e91dc493ea485905/jsonschema-4.24.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/01/0e/b27cdbaccf30b890c40ed1da9fd4a3593a5cf94dae54fb34f8a4b74fcd3f/jsonschema_specifications-2025.4.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/95/e6/4179c461a5fc43e3736880f64dbdc9b1a5349649f0ae32ded927c0e3a227/keras-3.10.0-py3-none-any.whl
@@ -859,6 +860,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstandard-0.23.0-py312h66e93f0_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb8e6e7a_2.conda
       - pypi: https://files.pythonhosted.org/packages/91/db/a0335710caaa6d0aebdaa65ad4df789c15d89b7babd9a30277838a7d9aac/emoji-2.14.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/5e/cc/c500408bb33e6e455f52dd07a5fbe651f439017210bb43fd54d74c8af818/ht_text_prep-1.2-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a5/4f/019ebcd010b4e8bba59db099462155d78d928652b99958b10fcac700c4c5/krippendorff-0.8.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e3/01/7e8561e33e79b408d9526b22b50e20bfdd8e551979237ad5c972759fe7d8/little_mallet_wrapper-0.5.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f1/54/65af8de681fa8255402c80eda2a501ba467921d5a7a028c9c22a2c2eedb5/msgpack-1.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -2503,13 +2505,14 @@ packages:
 - pypi: .
   name: fashion
   version: 0.1.0
-  sha256: 3ac4eb1b625270e3e04f308ac02ed5c5868926054daea922e92b3a69e9e0e8aa
+  sha256: 3645099ac469fb171c4a6d953d4d0d8cc0db5865ff079e545654b1def14e9d0f
   requires_dist:
   - ray>=2.44.1,<3
   - pyloess>=0.1.0,<0.2
   - little-mallet-wrapper>=0.5.0,<0.6
   - stanza>=1.10.1,<2
   - krippendorff>=0.8.1,<0.9
+  - ht-text-prep>=1.2,<2
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/linux-64/ffmpeg-4.4.2-gpl_hdf48244_113.conda
@@ -2900,6 +2903,11 @@ packages:
   - pkg:pypi/hpack?source=hash-mapping
   size: 30731
   timestamp: 1737618390337
+- pypi: https://files.pythonhosted.org/packages/5e/cc/c500408bb33e6e455f52dd07a5fbe651f439017210bb43fd54d74c8af818/ht_text_prep-1.2-py3-none-any.whl
+  name: ht-text-prep
+  version: '1.2'
+  sha256: 0d3afa5aedc4aff00aeea53b9dd63a74e9f135940e04b7596433e816d0f2fec0
+  requires_python: '>=3.6'
 - conda: https://conda.anaconda.org/conda-forge/noarch/httpcore-1.0.7-pyh29332c3_1.conda
   sha256: c84d012a245171f3ed666a8bf9319580c269b7843ffa79f26468842da3abd5df
   md5: 2ca8e6dbc86525c8b95e3c0ffa26442e

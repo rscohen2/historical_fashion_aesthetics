@@ -226,7 +226,6 @@ def main(source: Source, config: PipelineConfig | None = None):
             fashion_mention_file=output_dir / "fashion_mentions" / "filtered.csv",
             adjective_dir=output_dir / "adjectives",
             wearing_dir=output_dir / "wearing",
-            booknlp_dir=DATA_DIR / "booknlp",
             output_dir=output_dir,
         )
 

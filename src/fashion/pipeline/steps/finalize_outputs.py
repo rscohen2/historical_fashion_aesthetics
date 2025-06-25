@@ -6,22 +6,22 @@ Use the following files as input:
 
 Generate two files:
 
-- `final/fashion_mentions.csv`
-- `final/characters.csv`
+- `final/fashion_mentions.parquet`
+- `final/characters.parquet`
 
-Each row in fashion_mentions.csv should contain:
+Each row in fashion_mentions.parquet should contain:
 - book_id
 - character_id
 - mention_id
-- fashion_item
-- fashion_start_idx  (within excerpt)
-- fashion_end_idx  (within excerpt)
-- excerpt
-- excerpt_start_idx  (within book)
-- excerpt_end_idx  (within book)
-- fashion_adjectives  (list of adjectives for the fashion item)
+- term
+- start_idx  (within excerpt)
+- end_idx  (within excerpt)
+- sentence
+- sentence_start_idx  (within book)
+- sentence_end_idx  (within book)
+- adjectives  (list of adjectives for the fashion item)
 
-Each row in characters.csv should contain:
+Each row in characters.parquet should contain:
 - book_id
 - character_id
 - character_adjectives  (list of adjectives for the character)
@@ -137,7 +137,6 @@ def finalize_outputs(
     fashion_mention_file: Path,
     adjective_dir: Path,
     wearing_dir: Path,
-    booknlp_dir: Path,
     output_dir: Path,
 ):
     fashion_mentions = pd.read_csv(fashion_mention_file)
@@ -149,8 +148,10 @@ def finalize_outputs(
     fashion_df = create_fashion_df(wearing_df, fashion_adjectives, fashion_mentions)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    character_df.to_parquet(output_dir / "characters.parquet", index=False)
-    fashion_df.to_parquet(output_dir / "fashion_mentions.parquet", index=False)
+    character_df.to_parquet(output_dir / "final" / "characters.parquet", index=False)
+    fashion_df.to_parquet(
+        output_dir / "final" / "fashion_mentions.parquet", index=False
+    )
 
 
 if __name__ == "__main__":
@@ -158,7 +159,6 @@ if __name__ == "__main__":
     parser.add_argument("--fashion_mention_file", type=Path, required=True)
     parser.add_argument("--adjective_dir", type=Path, required=True)
     parser.add_argument("--wearing_dir", type=Path, required=True)
-    parser.add_argument("--booknlp_dir", type=Path, required=True)
     parser.add_argument("--output_dir", type=Path, required=True)
     args = parser.parse_args()
 
@@ -166,6 +166,5 @@ if __name__ == "__main__":
         fashion_mention_file=args.fashion_mention_file,
         adjective_dir=args.adjective_dir,
         wearing_dir=args.wearing_dir,
-        booknlp_dir=args.booknlp_dir,
         output_dir=args.output_dir,
     )
