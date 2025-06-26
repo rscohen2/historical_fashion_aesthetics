@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -13,9 +14,8 @@ from fashion.sources import Source, add_source_argument
 from fashion.span_utils import get_k_closest_spans
 
 
-def process_books(
-    book_ids, fashion_mention_file, booknlp_dir, data_source, output_dir, rank=0
-):
+def process_books(book_ids, fashion_mention_file, booknlp_dir, data_source, output_dir):
+    rank = int(os.environ.get("DISTRIBUTED_RANK", "0"))
     fashion_mentions = pd.read_csv(fashion_mention_file)
     fashion_mentions = fashion_mentions.set_index("filename")
 

@@ -129,10 +129,10 @@ class HathiSource(Source):
             }
 
     def iter_texts(self):
-        for filepath in self.filepaths:
+        for book_id, filepath in self.id_lookup.items():
             filepath = Path(filepath)
             with open(filepath, "r", encoding="utf-8") as f:
-                yield Text(filepath.name, filepath.stem, f.read(), str(filepath))
+                yield Text(filepath.name, book_id, f.read(), str(filepath))
 
     def load_text(self, book_id: str) -> Text:
         filepath = self.id_lookup[book_id]
@@ -149,6 +149,12 @@ class HathiSource(Source):
 class HathiManual(HathiSource):
     name = "hathi_manual"
     filenames = DATA_DIR / "hathitrust/manual.txt"
+    hathi_path = DATA_DIR / "hathitrust/stripped/"
+
+
+class HathiAll(HathiSource):
+    name = "hathi_all"
+    filenames = DATA_DIR / "hathitrust/all.txt"
     hathi_path = DATA_DIR / "hathitrust/stripped/"
 
 

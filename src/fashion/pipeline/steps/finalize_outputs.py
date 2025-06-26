@@ -92,7 +92,7 @@ def create_fashion_df(
     fashion_adjectives: pd.DataFrame,
     fashion_mentions: pd.DataFrame,
 ) -> pd.DataFrame:
-    fashion_mentions["book_id"] = fashion_mentions["filename"].str.split(".").str[0]
+    fashion_mentions["book_id"] = fashion_mentions["filename"].str[:-4]
     fashion_mentions.set_index(["book_id", "mention_id"], inplace=True)
     fashion_mentions = fashion_mentions[
         [

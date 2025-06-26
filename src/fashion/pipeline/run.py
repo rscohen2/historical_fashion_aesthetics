@@ -141,7 +141,7 @@ def main(source: Source, config: PipelineConfig | None = None):
         filter_fashion_mentions(
             input_file=output_dir / "fashion_mentions.csv",
             output_file=output_dir / "fashion_mentions" / "filtered.csv",
-            max_rows=None,
+            max_rows=-1,
         )
 
     # 3. Run BookNLP on the original texts
