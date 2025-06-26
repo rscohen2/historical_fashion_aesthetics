@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
-import pandas as pd
-
 from fashion.paths import CHICAGO_PATH, CONTEMP_LITBANK_PATH, DATA_DIR, LITBANK_PATH
 
 
@@ -115,7 +113,6 @@ class HathiSource(Source):
                 missing.append(filepath)
         if missing:
             print(f"{len(missing)}/{len(self.filepaths)} files not found")
-            print(missing)
 
     def iter_texts(self):
         for filepath in self.filepaths:
