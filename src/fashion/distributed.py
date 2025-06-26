@@ -30,6 +30,48 @@ def add_distributed_args(parser: argparse.ArgumentParser):
     )
 
 
+def run_single(
+    process_fn: Callable,
+    items: list[Any],
+    script_path: str | None = None,
+    pixi_env: str = "default",
+    extra_args: list[str] = [],
+):
+    if script_path is None:
+        current_frame = inspect.currentframe()
+        if current_frame is None or current_frame.f_back is None:
+            raise ValueError(
+                "No current frame found. Make sure to call this function from a script."
+            )
+        script_path = inspect.getfile(current_frame.f_back)
+
+    def spawn_process():
+        proc = subprocess.Popen(
+            [
+                "pixi",
+                "run",
+                "--environment",
+                pixi_env,
+                "python",
+                script_path,
+            ]
+            + extra_args,
+            env={
+                **os.environ,
+                "DISTRIBUTED_RANK": str(1),
+                "DISTRIBUTED_WORLD_SIZE": str(1),
+            },
+        )
+        proc.wait()
+        return proc
+
+    rank = int(os.environ.get("DISTRIBUTED_RANK", "0"))
+    if rank == 0:
+        spawn_process()
+    else:
+        process_fn(items)
+
+
 def run_distributed(
     process_fn: Callable,
     items: list[Any],
@@ -38,7 +80,12 @@ def run_distributed(
     total_processes: int = 8,
     concurrent_processes: int = 0,
     extra_args: list[str] = [],
+    restrict_cuda: bool = True,
 ):
+    # if restrict_cuda is True, then we will restrict the CUDA_VISIBLE_DEVICES
+    # environment variable to one GPU per process.
+    # you may want to set this to False if you are running a script that handles
+    # multiple GPUs already.
     if script_path is None:
         current_frame = inspect.currentframe()
         if current_frame is None or current_frame.f_back is None:
@@ -64,6 +111,9 @@ def run_distributed(
 
     def spawn_process(rank: int):
         """Spawn a subprocess for the given rank."""
+        cuda_visible_devices = (
+            str(rank % torch.cuda.device_count()) if restrict_cuda else ""
+        )
         proc = subprocess.Popen(
             [
                 "pixi",
@@ -80,7 +130,7 @@ def run_distributed(
             + extra_args,
             env={
                 **os.environ,
-                "CUDA_VISIBLE_DEVICES": str(rank % torch.cuda.device_count()),
+                "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
                 "DISTRIBUTED_RANK": str(rank),
                 "DISTRIBUTED_WORLD_SIZE": str(total_processes),
             },
