@@ -7,10 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 from datasets import Dataset
+from scipy.special import softmax
 from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
-from scipy.special import softmax
 
+from fashion.distributed import run_single
 from fashion.filtering.train_classifier import (
     DataCollator,
     DataPreparer,
@@ -70,17 +71,36 @@ def filter_fashion_texts(df) -> pd.DataFrame:
     return df
 
 
-def main(input_file: Path, output_file: Path, max_rows: int | None = None):
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    df = pd.read_csv(input_file)
-    if max_rows is not None:
-        df = df.head(max_rows)
-    df_filtered = filter_fashion_texts(df)
-    df_filtered.to_csv(output_file, index=False)
-    print(
-        f"{df_filtered.shape[0] / df.shape[0]:.2%} of texts ({df_filtered.shape[0]} / {df.shape[0]}) are fashion-related."
+def main(
+    input_file: Path,
+    output_file: Path,
+    max_rows: int = -1,
+):
+    def process(input_files: list[str]):
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        df = pd.read_csv(input_file)
+        if max_rows > 0:
+            df = df.head(max_rows)
+        df_filtered = filter_fashion_texts(df)
+        df_filtered.to_csv(output_file, index=False)
+        print(
+            f"{df_filtered.shape[0] / df.shape[0]:.2%} of texts ({df_filtered.shape[0]} / {df.shape[0]}) are fashion-related."
+        )
+        print(f"Filtered results saved to {output_file}")
+
+    run_single(
+        process,
+        [input_file],
+        script_path=__file__,
+        extra_args=[
+            "--input_file",
+            str(input_file),
+            "--output_file",
+            str(output_file),
+            "--max_rows",
+            str(max_rows),
+        ],
     )
-    print(f"Filtered results saved to {output_file}")
 
 
 if __name__ == "__main__":
@@ -100,7 +120,10 @@ if __name__ == "__main__":
         default=DATA_DIR / "filtered_fashion_texts.csv",
     )
     parser.add_argument(
-        "--max_rows", type=int, default=None, help="Maximum number of rows to process."
+        "--max_rows",
+        type=int,
+        default=-1,
+        help="Maximum number of rows to process.",
     )
     args = parser.parse_args()
 
