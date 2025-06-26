@@ -160,9 +160,9 @@ class HathiAll(HathiSource):
 
 def add_source_argument(parser: argparse.ArgumentParser):
     """
-    --source: Source of the data to process (chicago, litbank, contemp, hathitrust, debug)
+    --source: Source of the data to process (chicago, litbank, contemp, hathi_manual, hathi_all, debug)
     """
-    sources = [Chicago, LitBank, ContempLitBank, HathiManual, Debug]
+    sources = [Chicago, LitBank, ContempLitBank, HathiManual, HathiAll, Debug]
     source_map = {source.name.lower(): source for source in sources}
 
     def load_source(source_name: str) -> Source:
