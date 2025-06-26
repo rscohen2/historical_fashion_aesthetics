@@ -91,13 +91,31 @@ class ContempLitBank(TextDir):
         super().__init__(path)
 
 
-class HathiTrust:
-    name = "HathiTrust"
+class HathiSource(Source):
+    filenames: Path
+    hathi_path: Path
 
     def __init__(self):
-        self.metadata = pd.read_csv(DATA_DIR / "hathitrust_meta.csv")
-        self.filepaths = self.metadata["path"].tolist()
-        self.id_lookup = {Path(fp).stem: Path(fp) for fp in self.filepaths}
+        self.load_hathi_ids(self.filenames, self.hathi_path)
+
+    def load_hathi_ids(self, path: Path, hathi_path: Path):
+        self.filepaths = [
+            hathi_path / hathi_file.strip()
+            for hathi_file in path.read_text().splitlines()
+        ]
+        self.hathi_ids = [filepath.stem for filepath in self.filepaths]
+        self.id_lookup = {
+            hathi_id: filepath
+            for hathi_id, filepath in zip(self.hathi_ids, self.filepaths)
+        }
+        # check that all files exist
+        missing = []
+        for filepath in self.filepaths:
+            if not filepath.exists():
+                missing.append(filepath)
+        if missing:
+            print(f"{len(missing)}/{len(self.filepaths)} files not found")
+            print(missing)
 
     def iter_texts(self):
         for filepath in self.filepaths:
@@ -111,17 +129,23 @@ class HathiTrust:
             return Text(filepath.name, book_id, f.read(), str(filepath))
 
     def iter_book_ids(self):
-        return list(self.id_lookup.keys())
+        yield from list(self.id_lookup.keys())
 
     def __len__(self):
         return len(self.filepaths)
+
+
+class HathiManual(HathiSource):
+    name = "hathi_manual"
+    filenames = DATA_DIR / "hathitrust/manual.txt"
+    hathi_path = DATA_DIR / "hathitrust/stripped/"
 
 
 def add_source_argument(parser: argparse.ArgumentParser):
     """
     --source: Source of the data to process (chicago, litbank, contemp, hathitrust, debug)
     """
-    sources = [Chicago, LitBank, ContempLitBank, HathiTrust, Debug]
+    sources = [Chicago, LitBank, ContempLitBank, HathiManual, Debug]
     source_map = {source.name.lower(): source for source in sources}
 
     def load_source(source_name: str) -> Source:
