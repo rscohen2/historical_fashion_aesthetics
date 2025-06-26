@@ -113,6 +113,20 @@ class HathiSource(Source):
                 missing.append(filepath)
         if missing:
             print(f"{len(missing)}/{len(self.filepaths)} files not found")
+            # discard any missing files
+            self.filepaths = [
+                filepath for filepath in self.filepaths if filepath not in missing
+            ]
+            self.hathi_ids = [
+                hathi_id
+                for hathi_id, filepath in self.id_lookup.items()
+                if filepath not in missing
+            ]
+            self.id_lookup = {
+                hathi_id: filepath
+                for hathi_id, filepath in self.id_lookup.items()
+                if filepath not in missing
+            }
 
     def iter_texts(self):
         for filepath in self.filepaths:
