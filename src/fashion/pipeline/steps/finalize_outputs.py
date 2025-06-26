@@ -105,7 +105,7 @@ def create_fashion_df(
         ]
     ]
 
-    fashion_adjectives["book_id"] = fashion_adjectives["filename"].str.split(".").str[0]
+    fashion_adjectives["book_id"] = fashion_adjectives["filename"].str[:-4]
     fashion_adjectives.set_index(["book_id", "mention_id"], inplace=True)
     fashion_adjectives = (
         fashion_adjectives.groupby(["book_id", "mention_id"])
