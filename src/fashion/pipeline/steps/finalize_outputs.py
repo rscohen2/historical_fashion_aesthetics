@@ -148,9 +148,9 @@ def finalize_outputs(
     fashion_df = create_fashion_df(wearing_df, fashion_adjectives, fashion_mentions)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    character_df.to_parquet(output_dir / "final" / "characters.parquet", index=False)
+    character_df.to_parquet(output_dir / "characters.parquet", index=False)
     fashion_df.to_parquet(
-        output_dir / "final" / "fashion_mentions.parquet", index=False
+        output_dir / "fashion_mentions.parquet", index=False
     )
 
 
