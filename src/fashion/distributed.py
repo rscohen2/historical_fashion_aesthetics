@@ -136,7 +136,7 @@ def run_distributed(
             },
         )
         proc.wait()
-        return rank
+        return rank, proc.returncode
 
     if rank == 0:
         # Run all processes including rank 0 in parallel
@@ -154,8 +154,22 @@ def run_distributed(
                 total=total_processes,
                 desc=f"{Path(script_path).name} ({pixi_env})",
             ) as pbar:
-                for _ in as_completed(all_futures):
-                    pbar.update(1)
+                # this while loop is necessary because we might add new futures
+                # to the list as we go.
+                while all_futures:
+                    done_futures = []
+                    for future in as_completed(all_futures):
+                        # if the script did not exit cleanly, re-run it with the same rank
+                        rank, return_code = future.result()
+                        if return_code != 0:
+                            # re-run the script with the same rank
+                            all_futures.append(executor.submit(spawn_process, rank))
+                        else:
+                            pbar.update(1)
+                            done_futures.append(future)
+                    # remove the futures that successfully completed
+                    for future in done_futures:
+                        all_futures.remove(future)
     else:
         # Non-rank 0 processes just run their work
         execute_work(rank - 1)
