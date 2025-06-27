@@ -81,6 +81,7 @@ def run_distributed(
     concurrent_processes: int = 0,
     extra_args: list[str] = [],
     restrict_cuda: bool = True,
+    max_retries: int = 3,
 ):
     # if restrict_cuda is True, then we will restrict the CUDA_VISIBLE_DEVICES
     # environment variable to one GPU per process.
@@ -135,8 +136,8 @@ def run_distributed(
                 "DISTRIBUTED_WORLD_SIZE": str(total_processes),
             },
         )
-        proc.wait()
-        return rank, proc.returncode
+        returncode = proc.wait()
+        return rank, returncode
 
     if rank == 0:
         # Run all processes including rank 0 in parallel
@@ -148,6 +149,7 @@ def run_distributed(
             all_futures = [
                 executor.submit(spawn_process, i) for i in range(1, total_processes + 1)
             ]
+            rank_retries = {i: 0 for i in range(1, total_processes + 1)}
 
             # Wait for all processes including rank 0
             with tqdm(
@@ -161,9 +163,14 @@ def run_distributed(
                     for future in as_completed(all_futures):
                         # if the script did not exit cleanly, re-run it with the same rank
                         rank, return_code = future.result()
-                        if return_code != 0:
+                        print(f"Rank {rank} returned {return_code}")
+                        if return_code != 0 and rank_retries[rank] < max_retries:
                             # re-run the script with the same rank
                             all_futures.append(executor.submit(spawn_process, rank))
+                            rank_retries[rank] += 1
+                            print(
+                                f"Rank {rank} failed, retrying {rank_retries[rank]} / {max_retries}"
+                            )
                         else:
                             pbar.update(1)
                             done_futures.append(future)
