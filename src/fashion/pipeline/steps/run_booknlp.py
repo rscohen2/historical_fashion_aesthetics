@@ -55,17 +55,21 @@ def process_texts(book_ids, data_source: Source, output_dir: Path):
     model_params = process_model_files(model_params, device=torch.device("cpu"))
     booknlp = BookNLP("en", model_params)
     for book_id in tqdm(book_ids):
-        print(f"Processing file: {book_id}")
-        input_file = data_source.load_text(book_id).ref
-        print(f"Using book_id: {book_id}")
-        book_dir = output_dir / book_id
-        print(f"Output directory: {book_dir}")
-        if (Path(book_dir) / f"{book_id}.entities").exists():
-            print(
-                f"Output directory {book_dir} already exists. Skipping processing for {book_id}."
-            )
+        try:
+            print(f"Processing file: {book_id}")
+            input_file = data_source.load_text(book_id).ref
+            print(f"Using book_id: {book_id}")
+            book_dir = output_dir / book_id
+            print(f"Output directory: {book_dir}")
+            if (Path(book_dir) / f"{book_id}.entities").exists():
+                print(
+                    f"Output directory {book_dir} already exists. Skipping processing for {book_id}."
+                )
+                continue
+            booknlp.process(input_file, book_dir, book_id)
+        except Exception as e:
+            print(f"Error processing file {book_id}: {e}")
             continue
-        booknlp.process(input_file, book_dir, book_id)
 
 
 def run_in_env(
