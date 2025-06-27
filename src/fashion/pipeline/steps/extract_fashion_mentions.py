@@ -27,8 +27,12 @@ def preprocess(doc):
     return sentences
 
 
-def load_keywords(path: str):
+def load_keywords(path: str, nlp):
     keywords = [line.strip() for line in open(path, "r")]
+    keywords = [
+        doc[-1].lemma_ for doc in nlp.pipe(keywords, batch_size=64) for token in doc
+    ]
+
     return set(keywords)
 
 
@@ -54,14 +58,16 @@ class FashionExtractor:
 
 
 class NaiveKeywordExtractor(FashionExtractor):
-    def __init__(self, keywords_path="data/clothes.txt"):
-        self.keywords = load_keywords(keywords_path)
+    def __init__(self, keywords_path="data/clothes.txt", nlp=None):
+        if nlp is None:
+            nlp = spacy.load("en_core_web_sm")
+        self.keywords = load_keywords(keywords_path, nlp)
 
     def is_fashion(self, sentence):
         return [
             (word.idx - sentence[0].idx, word.idx - sentence[0].idx + len(word.text))
             for word in sentence
-            if word.text in self.keywords and word.pos == 92
+            if word.lemma_ in self.keywords and word.pos == 92
         ]
 
 
@@ -163,7 +169,7 @@ def process_all_files(directory, max_files=None):
     )
     docs = nlp.pipe(texts, batch_size=64, n_process=32)
 
-    extractor = NaiveKeywordExtractor()
+    extractor = NaiveKeywordExtractor(nlp=nlp)
 
     for filename, doc, chunk_start_idx in tqdm(
         zip(filenames, docs, chunk_start_idxs),
