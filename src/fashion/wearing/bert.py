@@ -233,26 +233,35 @@ class DataPreparer:
             max_length=self.max_length,
         )
 
-        query_span_masks = [
-            self.get_span_mask(
-                torch.tensor(tokens["offset_mapping"][i]),  # type: ignore
-                [start],
-                [end],
-            )
-            for i, (start, end) in enumerate(
-                zip(examples["query_start_idx"], examples["query_end_idx"])
-            )
-        ]
+        query_span_masks, query_skips = zip(
+            *[
+                self.get_span_mask(
+                    torch.tensor(tokens["offset_mapping"][i]),  # type: ignore
+                    [start],
+                    [end],
+                )
+                for i, (start, end) in enumerate(
+                    zip(examples["query_start_idx"], examples["query_end_idx"])
+                )
+            ]
+        )
 
-        target_span_masks = [
-            self.get_span_mask(
-                torch.tensor(tokens["offset_mapping"][i]),  # type: ignore
-                [start],
-                [end],
-            )
-            for i, (start, end) in enumerate(
-                zip(examples["target_start_idx"], examples["target_end_idx"])
-            )
+        target_span_masks, target_skips = zip(
+            *[
+                self.get_span_mask(
+                    torch.tensor(tokens["offset_mapping"][i]),  # type: ignore
+                    [start],
+                    [end],
+                )
+                for i, (start, end) in enumerate(
+                    zip(examples["target_start_idx"], examples["target_end_idx"])
+                )
+            ]
+        )
+
+        skip = [
+            query_skip or target_skip
+            for query_skip, target_skip in zip(query_skips, target_skips)
         ]
 
         labels = examples["label"]
@@ -261,9 +270,10 @@ class DataPreparer:
             "input_ids": tokens["input_ids"],
             "attention_mask": tokens["attention_mask"],
             "token_type_ids": tokens["token_type_ids"],
-            "query_span_mask": query_span_masks,
-            "target_span_mask": target_span_masks,
+            "query_span_mask": list(query_span_masks),
+            "target_span_mask": list(target_span_masks),
             "label": labels,
+            "skip": skip,
         }
 
     def get_span_mask(self, offset_mapping, starts, stops):
@@ -281,11 +291,10 @@ class DataPreparer:
         try:
             assert mask.sum() > 0, "Span mask is empty, check the offsets and spans."
         except AssertionError:
-            # fmt: off
-            import ipdb; ipdb.set_trace()  # noqa
-            # fmt: on
+            mask[0] = True
+            return mask, True
 
-        return mask
+        return mask, False
 
 
 def compute_metrics(eval_predictions):

@@ -1,5 +1,4 @@
 from textwrap import dedent
-from typing import Iterator
 from datasets import Dataset
 
 import llm
@@ -29,7 +28,7 @@ class Wearing:
         fashion_spans: list[tuple[int, int]],
         entity_spans: list[list[tuple[int, int]]],
         coref_labels: list[list[str]],
-    ) -> list[list[bool]]:
+    ) -> list[list[bool | None]]:
         """
         Check if the entity spans are "wearing" the target spans in the given sentences.
 
@@ -280,7 +279,7 @@ class WearingBert(Wearing):
         fashion_spans: list[tuple[int, int]],
         entity_spans: list[list[tuple[int, int]]],
         coref_labels: list[list[str]],
-    ) -> list[list[bool]]:
+    ) -> list[list[bool | None]]:
         eval_dataset: Dataset = Dataset.from_generator(
             self.format_data(sentences, fashion_spans, entity_spans, coref_labels)
         )
@@ -301,12 +300,19 @@ class WearingBert(Wearing):
         )
         results = self.trainer.predict(eval_dataset)
         labels = results.predictions.argmax(axis=1).astype(bool).tolist()
+        skips = eval_dataset["skip"]
         # renest to match the input
         entity_counts = np.cumsum(
             [0] + [len(datum_coref_labels) for datum_coref_labels in coref_labels]
         )
         nested_labels = [
-            labels[entity_counts[i] : entity_counts[i + 1]]
+            [
+                bool(label) if not skip else None
+                for (label, skip) in zip(
+                    labels[entity_counts[i] : entity_counts[i + 1]],
+                    skips[entity_counts[i] : entity_counts[i + 1]],
+                )
+            ]
             for i in range(len(entity_counts) - 1)
         ]
 

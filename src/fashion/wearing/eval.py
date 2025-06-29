@@ -78,12 +78,15 @@ def get_batch_coref_labels(batch_data: list[dict]) -> list[list[str]]:
 
 
 def label_batch(
-    batch_data: list[dict], wearing_results: list[list[bool]]
+    batch_data: list[dict], wearing_results: list[list[bool | None]]
 ) -> list[dict]:
     labeled_batch = []
     for datum, wearing_result in zip(batch_data, wearing_results):
         for char, wearing_label in zip(datum["characters"], wearing_result):
-            char["wearing"] = wearing_label
+            if wearing_label is not None:
+                char["wearing"] = wearing_label
+            else:
+                char["wearing"] = False
         labeled_batch.append(datum)
 
     return labeled_batch
