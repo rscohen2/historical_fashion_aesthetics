@@ -17,7 +17,6 @@ def load_cooc_data(fashion_cooc_file: Path) -> list[dict]:
 
 def inference(data: list[dict], wearing_model: Wearing, batch_size: int = -1):
     output_data = []
-    y_pred = []
     if batch_size == -1:
         batch_size = len(data)
     for batch in tqdm(
@@ -41,15 +40,6 @@ def inference(data: list[dict], wearing_model: Wearing, batch_size: int = -1):
         labeled_batch = label_batch(batch_data, wearing_results)
 
         output_data.extend(labeled_batch)
-
-        y_pred.extend(
-            [
-                wearing
-                for result in wearing_results
-                for wearing in result
-                if wearing is not None
-            ]
-        )
 
     return output_data
 
@@ -88,7 +78,7 @@ def main(
             "--output_dir",
             str(output_dir),
         ],
-        max_retries=0
+        max_retries=0,
     )
 
 
