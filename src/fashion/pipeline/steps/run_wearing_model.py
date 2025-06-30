@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from fashion.distributed import add_distributed_args, run_distributed
+from fashion.distributed import add_distributed_args, run_distributed, run_single
 from fashion.wearing import Wearing, WearingBert
 from fashion.wearing.eval import label_batch, prepare_batch
 
@@ -66,19 +66,19 @@ def main(
             # free up memory
             del wearing_model
 
-    run_distributed(
+    run_single(
         process,
         sorted(list(fashion_cooc_dir.glob("*.ndjson"))),
         script_path=__file__,
-        total_processes=num_processes,
-        concurrent_processes=concurrent_processes,
+        # total_processes=num_processes,
+        # concurrent_processes=concurrent_processes,
         extra_args=[
             "--fashion_cooc_dir",
             str(fashion_cooc_dir),
             "--output_dir",
             str(output_dir),
         ],
-        max_retries=0,
+        # max_retries=0
     )
 
 
