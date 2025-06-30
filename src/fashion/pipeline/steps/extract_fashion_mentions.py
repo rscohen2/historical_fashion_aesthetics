@@ -167,7 +167,7 @@ def process_all_files(directory, max_files=None):
     filenames, texts, chunk_start_idxs = zip(
         *load_texts(directory, max_files=max_files)
     )
-    docs = nlp.pipe(texts, batch_size=64, n_process=32)
+    docs = nlp.pipe(texts, batch_size=64, n_process=48)
 
     extractor = NaiveKeywordExtractor(nlp=nlp)
 
