@@ -9,6 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
+from tqdm import tqdm
 
 from fashion.distributed import add_distributed_args, run_distributed
 from fashion.sources import Source, add_source_argument
@@ -39,7 +40,7 @@ def process_cooc_file(
                 fashion_entities[book_id].add(character["coref"])
 
     # iterate through the books
-    for book_id, entity_corefs in fashion_entities.items():
+    for book_id, entity_corefs in tqdm(fashion_entities.items(), total=len(fashion_entities)):
         tokens_book = pd.read_csv(
             booknlp_dir / f"{book_id}/{book_id}.tokens",
             sep="\t",
@@ -89,9 +90,12 @@ def process_cooc_file(
 
         book = source.load_text(book_id)
 
-        entities_book["sentence"] = entities_book[
-            ["sentence_start", "sentence_end"]
-        ].apply(lambda x: book.text[x.sentence_start : x.sentence_end], axis=1)
+        try:
+            entities_book["sentence"] = entities_book[
+                ["sentence_start", "sentence_end"]
+            ].apply(lambda x: book.text[x.sentence_start : x.sentence_end], axis=1)
+        except:
+            import ipdb; ipdb.set_trace()
 
         entities_book["term"] = entities_book[
             ["entity_start_idx", "entity_end_idx"]
