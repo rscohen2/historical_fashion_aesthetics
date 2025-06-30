@@ -6,7 +6,7 @@ DISTRIBUTED_RANK=$2
 sbatch <<EOT
 #!/bin/bash
 
-#SBATCH --job-name=single_adj
+#SBATCH --job-name=single_adj_${DATA_PARTITION}_${DISTRIBUTED_RANK}
 #SBATCH --partition=savio3_gpu
 #SBATCH --account=fc_dbamman
 
@@ -22,6 +22,8 @@ sbatch <<EOT
 
 export DISTRIBUTED_RANK=$DISTRIBUTED_RANK
 export DISTRIBUTED_WORLD_SIZE=64
+echo "DATA_PARTITION: $DATA_PARTITION"
+echo "DISTRIBUTED_RANK: $DISTRIBUTED_RANK"
 pixi run python -m src.fashion.pipeline.steps.extract_adjectives \
     --noun_mention_dir /global/scratch/users/naitian/fashion/data/pipeline/hathi_all/entity_mentions_dir/$DATA_PARTITION/ \
     --output_dir /global/scratch/users/naitian/fashion/data/pipeline/hathi_all/adjectives/$DATA_PARTITION/ \
