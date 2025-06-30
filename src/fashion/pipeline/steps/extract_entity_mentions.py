@@ -63,6 +63,10 @@ def process_cooc_file(
         entities_book = pd.read_csv(
             booknlp_dir / f"{book_id}/{book_id}.entities", sep="\t", quoting=3
         )
+        if entities_book.empty:
+            print(f"No entities found for book {book_id}. Skipping.")
+            continue
+
         # merge character mentions with token offsets
         entities_book = entities_book.merge(
             tokens_book[["byte_onset", "sentence_start", "sentence_has_adjectives"]],
