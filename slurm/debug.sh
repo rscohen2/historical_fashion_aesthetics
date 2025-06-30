@@ -21,10 +21,11 @@ sbatch <<EOT
 
 
 export DISTRIBUTED_RANK=1
-export DISTRIBUTED_WORLD_SIZE=64
+export DISTRIBUTED_WORLD_SIZE=2
 pixi run python -m src.fashion.pipeline.steps.extract_adjectives \
-    --noun_mention_dir /global/scratch/users/naitian/fashion/data/pipeline/hathi_all/entity_mentions/$DATA_PARTITION/ \
+    --noun_mention_dir /global/scratch/users/naitian/fashion/data/pipeline/hathi_all/entity_mentions_dir/$DATA_PARTITION/ \
     --output_dir /global/scratch/users/naitian/fashion/data/pipeline/hathi_all/adjectives/$DATA_PARTITION/ \
     --do_coref \
     --num_processes 64 \
     --concurrent_processes 1
+EOT
