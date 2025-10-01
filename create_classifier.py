@@ -73,19 +73,23 @@ import requests
 #
 # len()
 import seaborn as sns
+
+from sklearn.ensemble import RandomForestClassifier
+
 #
 # #
 # #Create classifier
 # regr_1 = DecisionTreeRegressor(max_depth=2)
-regr_1 = RandomForestRegressor(n_estimators=5)
-regr_1.fit(X,Y)
-Y_pred=regr_1.predict(X)
+# regr_1 = RandomForestRegressor(n_estimators=5)
+# regr_1.fit(X,Y)
+clf = RandomForestClassifier(n_estimators=5)
+Y_pred=clf.predict(X)
 
 r2_score(Y, Y_pred)
 
 print('Accuracy: ',r2_score(Y, Y_pred))
 
-importances = list(regr_1.feature_importances_)
+importances = list(clf.feature_importances_)
 #Print out the feature and importances
 print (importances)
 
