@@ -154,12 +154,29 @@ class StanzaProcessor(Processor):
             + (",coref" if self.do_coref else ""),
         )
         self.patterns = [
+            # The red dress
             "{cpos:ADJ}=adjective <amod=adj {pos:/NN.*|PRP/}=noun",
+            # The dress is beautiful.
+            # Lauren was wonderful.
             "{cpos:ADJ}=adjective >nsubj=adj {pos:/NN.*|PRP/}=noun",
+            # Sam, who was sad, arrived.
+            # "Sam" -> "sad"
             "{cpos:ADJ}=adjective </acl.*/=adj {pos:/NN.*|PRP/}=noun",
+            # Lily found herself confused.
+            # "Lily" -> "confused"
             "{cpos:VERB}=link >xcomp=xcomp {cpos:ADJ}=adjective >obj {pos:/NN.*|PRP/}=noun",
+            # Handle compound nouns
+            # The horse rider was lovely
+            # "horse rider" -> "lovely"
             "{pos:/NN.*|PRP/}=first_noun <compound=compound {pos:/NN.*|PRP/}=second_noun",
+            # Handle conjunctions in adjectives
+            # Lily found herself confused and sad.
+            # "herself" -> "confused"
+            # "herself" -> "sad"
             "{cpos:ADJ}=adjective <conj=conj {cpos:ADJ}=second_adjective",
+            # Handle negations
+            # I am not happy.
+            # "I" -> "happy", negated=True
             "{lemma:not}=not <advmod=not {cpos:ADJ}=adjective",
         ]
         self.semgrex = Semgrex()
@@ -394,6 +411,7 @@ def main(
     concurrent_processes: int,
     do_coref: bool,
 ):
+
     def process(subset: list[dict]):
         print(f"Processing {len(subset)} files.")
         mentions = pd.DataFrame(subset)
