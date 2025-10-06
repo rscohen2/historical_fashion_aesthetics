@@ -3,6 +3,8 @@ from sklearn.preprocessing import MultiLabelBinarizer
 from collections import Counter
 
 
+
+
 def prepare_fashion_data(fashion_df, character_df):
     """
     Merge fashion mentions with character gender data.
@@ -68,7 +70,7 @@ def create_bow_features_efficient(df, min_frequency=2):
     # Normalize columns to lists
     print("Normalizing terms and adjectives to lists...")
     df_bow['fashion_term_list'] = df_bow['term'].apply(normalize_to_list)
-    df_bow['adjective_list'] = df_bow['adjectives_x'].apply(normalize_to_list)
+    df_bow['adjective_list'] = df_bow['adjectives'].apply(normalize_to_list)
 
     # Count frequencies to filter rare terms (saves memory)
     print("Counting term frequencies...")
@@ -126,12 +128,13 @@ def create_bow_features_efficient(df, min_frequency=2):
         return result_df, mlb, bow_matrix
 
 
-def full_pipeline(fashion_df, character_df, min_frequency=2):
+def full_pipeline(merged_df, min_frequency=2):
     """
     Complete pipeline: merge data and create bag-of-words features.
 
     Parameters:
     fashion_df: DataFrame with fashion mentions
+
     character_df: DataFrame with character gender
     min_frequency: Minimum occurrences to include a feature
 
@@ -139,11 +142,11 @@ def full_pipeline(fashion_df, character_df, min_frequency=2):
     Transformed DataFrame (or metadata dict if sparse), MultiLabelBinarizer, optional sparse matrix
     """
 
-    # Step 1: Merge the data
-    print("Step 1: Merging data...")
-    merged_df = prepare_fashion_data(fashion_df, character_df)
-    # filter they/them/their out for now
-    merged_df = merged_df[merged_df['gender'] != 'they/them/their']
+    # # Step 1: Merge the data
+    # print("Step 1: Merging data...")
+    # merged_df = prepare_fashion_data(fashion_df, character_df)
+    # # filter they/them/their out for now
+    # merged_df = merged_df[merged_df['gender'] != 'they/them/their']
 
     # Step 2: Create bag-of-words features
     print("\nStep 2: Creating bag-of-words features...")
@@ -230,8 +233,9 @@ def train_gender_classifier(X, y, test_size=0.2, random_state=42):
         X, y, test_size=test_size, random_state=random_state, stratify=y
     )
 
-    print(f"\nTraining set size: {len(X_train)}")
-    print(f"Test set size: {len(X_test)}")
+    print(f"Test set size: {X_test.shape[0]}")
+
+    # print(f"Test set size: {len(X_test)}")
     print(f"\nTraining set gender distribution:\n{y_train.value_counts()}")
 
     # Train Logistic Regression (works well with BOW features)
@@ -422,15 +426,52 @@ def full_classification_pipeline(df_transformed, mlb, bow_matrix=None,
 
 # Example usage
 if __name__ == "__main__":
-    fashion_df = pd.read_parquet('fashion_mentions.parquet')
-    character_df = pd.read_parquet('characters.parquet')
-    fashion_df = fashion_df[:100]
-    character_df = character_df[:100]
-    # Assuming you have df_transformed, mlb, bow_matrix from the BOW pipeline
-    # Run full pipeline
+    import pyarrow.parquet as pq
+
+    # fashion_pq = pd.read_parquet('fashion_mentions.parquet')
+    # character_pq = pd.read_parquet('characters.parquet')
+    fashion_pq = pq.ParquetFile("fashion_mentions.parquet")
+    # characters_pq = pq.ParquetFile("characters.parquet")
+
+    import pandas as pd
+
+    characters_pq = pq.ParquetFile("characters.parquet")
+    all_character_chunks = []
+
+    for i in range(characters_pq.num_row_groups):
+        df = characters_pq.read_row_group(i).to_pandas()
+        # Only keep relevant columns
+        df = df[['character_id', 'gender']]
+        all_character_chunks.append(df)
+
+    # Combine and deduplicate by character_id (keeping first)
+    character_df = pd.concat(all_character_chunks, ignore_index=True)
+    character_df = character_df.drop_duplicates(subset='character_id')
+
+    # Save slimmed, deduplicated data
+    character_df.to_parquet("slim_characters.parquet", index=False)
+
+    slim_characters = pq.ParquetFile("slim_characters.parquet")
+
+    for i in range(fashion_pq.num_row_groups):
+        fashion_df = fashion_pq.read_row_group(i).to_pandas()
+
+        # Filter fashion_df before merge
+        fashion_df = fashion_df[fashion_df['gender'] != 'they/them/theirs']
+
+        # Now merge with slim character data in a streaming-safe way
+        # Step 1: Load slim_characters into a DataFrame (should be small enough now)
+        slim_df = pd.concat([
+            slim_characters.read_row_group(j).to_pandas()
+            for j in range(slim_characters.num_row_groups)
+        ])
+
+        # Step 2: Merge
+        merged_df = fashion_df.merge(slim_df, on='character_id', how='left')
+
+
     df_transformed, mlb, bow_matrix = full_pipeline(
-        fashion_df,
-        character_df,
+       merged_df,
         min_frequency=1  # Lower for small example
     )
 
