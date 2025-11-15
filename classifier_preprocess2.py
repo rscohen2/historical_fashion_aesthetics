@@ -1,5 +1,7 @@
-from classifier import classifier_preprocess
+# from classifier import classifier_preprocess
 from classifier_preprocess import *
+from sklearn.preprocessing import MultiLabelBinarizer
+from collections import Counter
 if __name__ == "__main__":
 
     import pyarrow.parquet as pq
@@ -66,7 +68,7 @@ if __name__ == "__main__":
     # Now run the full pipeline on the combined data
     df_transformed, mlb, bow_matrix = full_pipeline(
         full_merged_df,
-        min_frequency=1  # Lower for small example
+        min_frequency=20  # Lower for small example
     )
 
 
