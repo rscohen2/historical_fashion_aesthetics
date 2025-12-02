@@ -224,6 +224,7 @@ def main(source: Source, config: PipelineConfig | None = None):
         step_config = config.steps["finalize_outputs"]
         finalize_outputs(
             fashion_mention_file=output_dir / "fashion_mentions" / "filtered.csv",
+            entity_mention_dir=output_dir / "entity_mentions",
             adjective_dir=output_dir / "adjectives",
             wearing_dir=output_dir / "wearing",
             output_dir=output_dir / "final",

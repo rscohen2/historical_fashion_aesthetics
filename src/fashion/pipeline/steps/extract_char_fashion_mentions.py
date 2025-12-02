@@ -85,10 +85,6 @@ def process_books(book_ids, fashion_mention_file, booknlp_dir, data_source, outp
 
                 return start_idx, end_idx
 
-            # # fmt: off
-            # import ipdb; ipdb.set_trace()  # noqa: E702
-            # # fmt: on
-
             excerpt_start = max(
                 start_idx - 500,
                 get_sentence_bounds(

@@ -446,29 +446,30 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--do_coref",
-        "-c",
-        action="store_true",
-        help="Whether to do coreference resolution.",
-    )
-    parser.add_argument(
-        "--noun_mention_dir",
-        type=Path,
-        help="Path to the file containing noun mentions.",
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=Path,
-        help="Path to the output file where results will be saved.",
-    )
-    add_distributed_args(parser)
-    args = parser.parse_args()
-    main(
-        args.noun_mention_dir,
-        args.output_dir,
-        args.num_processes,
-        args.concurrent_processes,
-        args.do_coref,
-    )
+    test()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument(
+    #     "--do_coref",
+    #     "-c",
+    #     action="store_true",
+    #     help="Whether to do coreference resolution.",
+    # )
+    # parser.add_argument(
+    #     "--noun_mention_dir",
+    #     type=Path,
+    #     help="Path to the file containing noun mentions.",
+    # )
+    # parser.add_argument(
+    #     "--output_dir",
+    #     type=Path,
+    #     help="Path to the output file where results will be saved.",
+    # )
+    # add_distributed_args(parser)
+    # args = parser.parse_args()
+    # main(
+    #     args.noun_mention_dir,
+    #     args.output_dir,
+    #     args.num_processes,
+    #     args.concurrent_processes,
+    #     args.do_coref,
+    # )

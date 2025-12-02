@@ -53,7 +53,9 @@ def read_wearing_files(wearing_dir: Path) -> pd.DataFrame:
     return pd.concat(dfs)
 
 
-def create_character_df(entities_adjectives: pd.DataFrame) -> pd.DataFrame:
+def create_character_df(
+    entities_adjectives: pd.DataFrame, entity_to_gender_map: dict[tuple[str, int], str]
+) -> pd.DataFrame:
     entities_adjectives["character_start_idx"] = (
         entities_adjectives["mention_start_idx"]
         + entities_adjectives["sentence_start_idx"]
@@ -75,11 +77,19 @@ def create_character_df(entities_adjectives: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
 
+    grouped["gender"] = [
+        entity_to_gender_map[(book_id, mention_id)]
+        if (book_id, mention_id) in entity_to_gender_map
+        else None
+        for book_id, mention_id in zip(grouped["filename"], grouped["mention_id"])
+    ]
+
     grouped.rename(
         columns={
             "filename": "book_id",
             "mention_id": "character_id",
             "adjective": "adjectives",
+            "gender": "gender",
         },
         inplace=True,
     )
@@ -114,17 +124,29 @@ def create_fashion_df(
     )
 
     wearing_df.set_index(["book_id", "mention_id"], inplace=True)
+
     wearing_df = (
         wearing_df.characters.apply(
-            lambda x: set([c["coref"] for c in x if "wearing" in c and c["wearing"]])
+            lambda x: [
+                {
+                    "character_id": c["coref"],
+                    "character_start_idx": c["character_start_idx"],
+                    "character_end_idx": c["character_end_idx"],
+                }
+                for c in x
+                if "wearing" in c and c["wearing"]
+            ]
         )
         .explode()
-        .to_frame("character_id")
+        .to_frame("characters")
     )
+
+    normalized = pd.json_normalize(wearing_df.characters)
+    normalized.index = wearing_df.index
 
     merged = fashion_mentions.merge(
         fashion_adjectives, left_index=True, right_index=True, how="outer"
-    ).merge(wearing_df, left_index=True, right_index=True, how="outer")
+    ).merge(normalized, left_index=True, right_index=True, how="outer")
 
     # Hack: https://stackoverflow.com/a/64207857
     merged["adjectives"] = merged["adjectives"].fillna("").apply(list)
@@ -135,28 +157,41 @@ def create_fashion_df(
 
 def finalize_outputs(
     fashion_mention_file: Path,
+    entity_mention_dir: Path,
     adjective_dir: Path,
     wearing_dir: Path,
     output_dir: Path,
 ):
     fashion_mentions = pd.read_csv(fashion_mention_file)
-    fashion_adjectives = read_adjective_files(adjective_dir / "fashion")
-    entities_adjectives = read_adjective_files(adjective_dir / "entities")
+    # entities_mentions = pd.concat(
+    #     [
+    #         pd.read_csv(entity_mention_file)
+    #         for entity_mention_file in entity_mention_dir.glob("*.csv")
+    #     ]
+    # )
+
+    # entity_to_gender_map = (
+    #     entities_mentions.drop_duplicates(subset=["filename", "mention_id"])
+    #     .set_index(["filename", "mention_id"])
+    #     .gender.to_dict()
+    # )
+
+    fashion_adjectives = read_adjective_files(adjective_dir / "filtered_fashion")
+    # entities_adjectives = read_adjective_files(adjective_dir / "filtered_entities")
     wearing_df = read_wearing_files(wearing_dir)
 
-    character_df = create_character_df(entities_adjectives)
+    # character_df = create_character_df(entities_adjectives, entity_to_gender_map)
     fashion_df = create_fashion_df(wearing_df, fashion_adjectives, fashion_mentions)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    character_df.to_parquet(output_dir / "characters.parquet", index=False)
-    fashion_df.to_parquet(
-        output_dir / "fashion_mentions.parquet", index=False
-    )
+    # character_df.to_parquet(output_dir / "characters.parquet", index=False)
+    fashion_df.to_parquet(output_dir / "fashion_mentions.parquet", index=False)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fashion_mention_file", type=Path, required=True)
+    parser.add_argument("--entity_mention_dir", type=Path, required=True)
     parser.add_argument("--adjective_dir", type=Path, required=True)
     parser.add_argument("--wearing_dir", type=Path, required=True)
     parser.add_argument("--output_dir", type=Path, required=True)
@@ -164,6 +199,7 @@ if __name__ == "__main__":
 
     finalize_outputs(
         fashion_mention_file=args.fashion_mention_file,
+        entity_mention_dir=args.entity_mention_dir,
         adjective_dir=args.adjective_dir,
         wearing_dir=args.wearing_dir,
         output_dir=args.output_dir,

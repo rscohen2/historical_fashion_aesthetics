@@ -75,7 +75,68 @@ def distance(target_span, source_span):
     return min(abs(target_start - source_start), abs(target_end - source_end))
 
 
+def overlaps(target_span, source_span):
+    target_start, target_end = target_span
+    source_start, source_end = source_span
+
+    return target_start < source_end and target_end > source_start
+
+
+def contains(target_span, source_span):
+    """
+    Return True if the target span contains the source span.
+    """
+    target_start, target_end = target_span
+    source_start, source_end = source_span
+
+    return target_start <= source_start and target_end >= source_end
+
+
+def contained_by(target_span, source_span):
+    """
+    Return True if the target span is contained by the source span.
+    """
+    target_start, target_end = target_span
+    source_start, source_end = source_span
+
+    return target_start >= source_start and target_end <= source_end
+
+
+def padding(target_span, source_span):
+    """Return the size of the non-overlap padding between the target and source spans."""
+    target_start, target_end = target_span
+    source_start, source_end = source_span
+
+    return np.abs(target_start - source_start) + np.abs(target_end - source_end)
+
+
+def max_padding(max_padding: int):
+    def fn(target_span, source_span):
+        return padding(target_span, source_span) <= max_padding
+
+    return fn
+
+
+def get_fn_rows(target_spans, source_spans, fn):
+    """
+    For each target span, find spans in the source spans that satisfy the function fn.
+    """
+    target_starts, target_ends = target_spans
+    source_starts, source_ends = source_spans
+
+    fn_indices = []
+    for i, (target_start, target_end) in enumerate(zip(target_starts, target_ends)):
+        fn_indices.append([])
+        for j, (source_start, source_end) in enumerate(zip(source_starts, source_ends)):
+            if fn((target_start, target_end), (source_start, source_end)):
+                fn_indices[i].append(j)
+    return fn_indices
+
+
 def get_overlap_rows_single(target_span, source_spans, partial=False):
+    """
+    For a single target span, find overlapping spans in the source spans.
+    """
     target_start, target_end = target_span
     source_starts, source_ends = source_spans
 
@@ -112,7 +173,6 @@ def get_overlap_rows(target_spans, source_spans, partial=False):
         list[list[int]]: output[i] is a list of indices of source spans that overlap with target span i.
     """
     target_starts, target_ends = target_spans
-    source_starts, source_ends = source_spans
 
     overlaps = []
 

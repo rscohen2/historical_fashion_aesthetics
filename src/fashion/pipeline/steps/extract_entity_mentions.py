@@ -40,7 +40,9 @@ def process_cooc_file(
                 fashion_entities[book_id].add(character["coref"])
 
     # iterate through the books
-    for book_id, entity_corefs in tqdm(fashion_entities.items(), total=len(fashion_entities)):
+    for book_id, entity_corefs in tqdm(
+        fashion_entities.items(), total=len(fashion_entities)
+    ):
         tokens_book = pd.read_csv(
             booknlp_dir / f"{book_id}/{book_id}.tokens",
             sep="\t",
@@ -63,6 +65,13 @@ def process_cooc_file(
         entities_book = pd.read_csv(
             booknlp_dir / f"{book_id}/{book_id}.entities", sep="\t", quoting=3
         )
+
+        meta_book = json.load(open(booknlp_dir / f"{book_id}/{book_id}.book"))
+        entity_to_g = {
+            entity["id"]: entity["g"]
+            for entity in meta_book["characters"]
+            if entity["g"] is not None
+        }
 
         # merge character mentions with token offsets
         entities_book = entities_book.merge(
@@ -99,8 +108,9 @@ def process_cooc_file(
             entities_book["sentence"] = entities_book[
                 ["sentence_start", "sentence_end"]
             ].apply(lambda x: book.text[x.sentence_start : x.sentence_end], axis=1)
-        except:
-            import ipdb; ipdb.set_trace()
+        except Exception as e:
+            print(f"Error processing book {book_id}: {e}")
+            continue
 
         entities_book["term"] = entities_book[
             ["entity_start_idx", "entity_end_idx"]
@@ -119,6 +129,9 @@ def process_cooc_file(
                 "end_idx": entities_book.entity_end_idx - entities_book.sentence_start,
                 "sentence_start_idx": entities_book.sentence_start,
                 "sentence_end_idx": entities_book.sentence_end,
+                "gender": entities_book.COREF.apply(
+                    lambda x: entity_to_g[x]["argmax"] if x in entity_to_g else None
+                ),
             }
         )
 
