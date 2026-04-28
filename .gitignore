@@ -2,7 +2,7 @@
 .envrc
 data/
 *.csv
-notebooks/
+# notebooks/
 .vscode/
 
 # pixi environments
