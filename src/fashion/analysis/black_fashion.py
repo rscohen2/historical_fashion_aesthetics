@@ -4,6 +4,7 @@
    `black_fashion_passages.tsv` along with their metadata (e.g., title, author,
    publication date, etc.)
 2. extract a sample of 50 passages per decade into `black_fashion_passages_sample.tsv`
+3. 
 """
 
 import argparse

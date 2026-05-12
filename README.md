@@ -27,3 +27,20 @@ This repository contains a series of scripts which:
 5. Apply a deberta model to identify which entity in a passage is in possession of the mentioned article of clothing (`wearing/inference.py`)
 6. Extract sentences which mention entities that have been linked to clothing (`extract_entity_mentions.py`)
 7. Use dependency parsing to find adjectives which describe a particular noun (`extract_adjectives.py`)
+
+## Visualization
+
+Interactive D3/React visualizations live in `visualize/`. To run:
+
+```
+cd visualize
+npm install
+npm run dev
+```
+
+Pages:
+- **Home** — overview and navigation
+- **Gender Classifier** — per-decade logistic regression coefficients showing which fashion terms index male vs. female characters; supports both top-terms-by-decade bar chart and per-term trajectory over time
+- **Adjective Categories** — WordNet semantic category frequency bar chart with count filter
+
+Data files are loaded from `public/data/` (symlinked to `data/analysis/`). To add a new visualization, create a page in `src/pages/`, add a route in `src/App.jsx`, and add a nav entry in `src/components/Nav.jsx`.

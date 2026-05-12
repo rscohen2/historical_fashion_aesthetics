@@ -62,13 +62,24 @@ def get_top_terms(coef_df: pd.DataFrame, gender: str, top_n: int) -> list[str]:
     return top_per_decade["term"].unique().tolist()
 
 
+def _categorize_bw(color: str) -> str:
+    if color == "black":
+        return "black"
+    if color == "white":
+        return "white"
+    return "other"
+
+
 def compute_color_prevalence(
-    df: pd.DataFrame, colors: set[str], top_n_colors: int = 10
+    df: pd.DataFrame, colors: set[str], top_n_colors: int = 10, group_bw: bool = False
 ) -> pd.DataFrame:
     """Return a long-form DataFrame of color proportions per (decade, term).
 
     Proportions are relative to total term mentions so that the "(none)" row
     captures how often the term appears without any color description.
+
+    When group_bw=True, colors are collapsed into "black", "white", and "other"
+    instead of tracking each color individually.
     """
     # One sample per (book, term) to avoid within-book repetition
     sampled = df.groupby(["book_id", "term"]).first().reset_index()
@@ -83,6 +94,10 @@ def compute_color_prevalence(
     adj_df = sampled.explode("adjectives_fashion").copy()
     adj_df = adj_df[adj_df["adjectives_fashion"].str.lower().isin(colors)]
     adj_df["adjectives_fashion"] = adj_df["adjectives_fashion"].str.lower()
+
+    if group_bw:
+        adj_df["adjectives_fashion"] = adj_df["adjectives_fashion"].map(_categorize_bw)
+
     adj_df = adj_df.drop_duplicates(subset=["book_id", "term", "adjectives_fashion"])
 
     counts = (
@@ -97,16 +112,17 @@ def compute_color_prevalence(
     counts["ci_low"] = [v[0] for v in ci]
     counts["ci_high"] = [v[1] for v in ci]
 
-    # Restrict to top N colors per term, then always append "(none)"
-    top_colors = (
-        counts.groupby(["term", "adjectives_fashion"])["count"]
-        .sum()
-        .reset_index()
-        .sort_values("count", ascending=False)
-        .groupby("term")
-        .head(top_n_colors)[["term", "adjectives_fashion"]]
-    )
-    counts = counts.merge(top_colors, on=["term", "adjectives_fashion"])
+    if not group_bw:
+        # Restrict to top N colors per term
+        top_colors = (
+            counts.groupby(["term", "adjectives_fashion"])["count"]
+            .sum()
+            .reset_index()
+            .sort_values("count", ascending=False)
+            .groupby("term")
+            .head(top_n_colors)[["term", "adjectives_fashion"]]
+        )
+        counts = counts.merge(top_colors, on=["term", "adjectives_fashion"])
 
     # "(none)": mentions where no color adjective was used
     colored = (
@@ -128,8 +144,14 @@ def compute_color_prevalence(
     return pd.concat([counts, none_rows], ignore_index=True)
 
 
+BW_COLOR_SCALE = alt.Scale(
+    domain=["black", "white", "other", "(none)"],
+    range=["#222222", "#aaaaaa", "#4c78a8", "#dddddd"],
+)
+
+
 def make_chart(
-    color_counts: pd.DataFrame, gender: str, terms: list[str]
+    color_counts: pd.DataFrame, gender: str, terms: list[str], group_bw: bool = False
 ) -> alt.FacetChart:
     """Faceted chart with one panel per fashion item, color encoding per color adjective."""
     data = color_counts[color_counts.term.isin(terms)]
@@ -139,13 +161,19 @@ def make_chart(
     )
     y_zoom = alt.selection_interval(encodings=["y"], resolve="global")
 
+    color_enc = (
+        alt.Color("adjectives_fashion:N", title="Color", scale=BW_COLOR_SCALE)
+        if group_bw
+        else alt.Color("adjectives_fashion:N", title="Color")
+    )
+
     line = (
         alt.Chart(data)
         .mark_line(point=True)
         .encode(
             x=alt.X("decade:O", title="Decade", sort=DECADES),
             y=alt.Y("proportion:Q", title="Proportion of mentions"),
-            color=alt.Color("adjectives_fashion:N", title="Color"),
+            color=color_enc,
             opacity=alt.condition(selection, alt.value(1), alt.value(0.15)),
             tooltip=[
                 "decade:O",
@@ -166,20 +194,22 @@ def make_chart(
             x=alt.X("decade:O", sort=DECADES),
             y=alt.Y("ci_low:Q"),
             y2=alt.Y2("ci_high:Q"),
-            color=alt.Color("adjectives_fashion:N"),
+            color=color_enc,
             opacity=alt.condition(selection, alt.value(0.4), alt.value(0.05)),
         )
         .transform_filter(y_zoom)
     )
 
+    resolve = "shared" if group_bw else "independent"
+    title_suffix = " (black/white/other)" if group_bw else ""
     return (
         (band + line)
         .facet(
             facet=alt.Facet("term:N", title="Fashion Item"),
             columns=3,
-            title=f"Color Adjective Prevalence by Fashion Item ({gender.capitalize()}-gendered mentions)",
+            title=f"Color Adjective Prevalence by Fashion Item ({gender.capitalize()}-gendered mentions){title_suffix}",
         )
-        .resolve_scale(color="independent")
+        .resolve_scale(color=resolve)
     )
 
 
@@ -208,6 +238,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=10,
         help="Number of top color adjectives to show per term (default: 10).",
+    )
+    parser.add_argument(
+        "--group-bw",
+        action="store_true",
+        help="Collapse colors into black, white, and other instead of top-N individual colors.",
     )
     parser.add_argument(
         "--classifier-output",
@@ -242,7 +277,9 @@ def main() -> None:
     for gender in genders:
         terms = get_top_terms(coef_df, gender, args.top_terms)
         gender_df = df[df.gender_dep_pron.eq(gender)]
-        color_counts = compute_color_prevalence(gender_df, colors, args.top_colors)
+        color_counts = compute_color_prevalence(
+            gender_df, colors, args.top_colors, group_bw=args.group_bw
+        )
 
         term_totals = (
             color_counts[
@@ -257,8 +294,9 @@ def main() -> None:
         for term, n in term_totals.items():
             print(f"  {term}: {n:,}")
 
-        chart = make_chart(color_counts, gender, terms)
-        out_path = OUTPUT_DIR / f"color_prevalence_{gender}.html"
+        chart = make_chart(color_counts, gender, terms, group_bw=args.group_bw)
+        suffix = "_bw" if args.group_bw else ""
+        out_path = OUTPUT_DIR / f"color_prevalence_{gender}{suffix}.html"
         chart.save(str(out_path))
         print(f"Saved {out_path}")
 

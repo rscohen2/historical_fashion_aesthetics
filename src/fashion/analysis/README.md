@@ -51,7 +51,12 @@ Requires `gender_classifier.py` to have been run first.
 ```
 python -m fashion.analysis.colors [--debug] [--gender {male,female,both}]
                                    [--top-terms N] [--top-colors N]
+                                   [--group-bw]
                                    [--classifier-output PATH]
 ```
 
 Output: `data/analysis/colors/color_prevalence_{gender}.html`
+
+With `--group-bw`, colors are collapsed into "black", "white", and "other" instead of
+top-N individual colors. The color scale is shared across facets. Output files are named
+`color_prevalence_{gender}_bw.html`.
