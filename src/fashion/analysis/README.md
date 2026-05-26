@@ -60,3 +60,20 @@ Output: `data/analysis/colors/color_prevalence_{gender}.html`
 With `--group-bw`, colors are collapsed into "black", "white", and "other" instead of
 top-N individual colors. The color scale is shared across facets. Output files are named
 `color_prevalence_{gender}_bw.html`.
+
+### `gp_logodds.py`
+
+For the top N fashion terms (by frequency), computes per-decade log odds (Monroe et al. 2008
+Dirichlet-prior) of each character adjective being associated with that term, then fits a
+Gaussian process regression (RBF + WhiteKernel) to the temporal log-odds signal. Produces an
+interactive Altair chart stacking one panel per term; each panel shows the GP posterior mean,
+95% credible band, and the raw per-decade observations. Click a legend entry to highlight
+one adjective.
+
+```
+python -m fashion.analysis.gp_logodds [--debug] [--top-terms N] [--top-adj N] [--min-df N]
+```
+
+Output: `data/analysis/gp_logodds/gp_logodds.html`
+
+The top adjectives shown per term are selected by maximum absolute log-odds across all decades.
