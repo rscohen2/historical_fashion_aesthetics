@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 
-from fashion.utils import CHICAGO_PATH, DATA_DIR
+from fashion.paths import CHICAGO_PATH, DATA_DIR
 
 
 def extract_paragraphs(text):

@@ -54,10 +54,60 @@ ipdb = ">=0.13.13,<0.14"
 [tool.pixi.feature.booknlp.pypi-dependencies]
 booknlp = "*"
 
+# Isolated vLLM environment (`no-default-feature`). The default feature pins
+# conda numpy==2.0.0 / cuda 12.4 / transformers, which cap the pypi resolution
+# and force vLLM back to 0.8.5 (no qwen3_5 support). Keeping it isolated lets
+# vLLM pull torch 2.11 + CUDA 13 from its wheel. The editable `fashion` package
+# is added directly so `import fashion` works here; its declared deps install
+# via pypi and numpy/torch float to whatever vLLM needs. Conda-only research
+# tools (spacy, nltk, llm, jq) are intentionally not included.
+# Channels for the vllm env, in priority order. `nvidia` is first so the CUDA 13
+# toolkit resolves cleanly; the workspace's `nvidia/label/cuda-12.4.0` channel is
+# deliberately omitted here so it can't pin cuda subpackages back to 12.4. Only
+# applies to envs with the vllm feature, so `default` is unaffected.
+[tool.pixi.feature.vllm]
+channels = ["nvidia", "conda-forge", "pytorch"]
+
+[tool.pixi.feature.vllm.dependencies]
+python = "3.12.*"
+# Matching CUDA 13 toolkit for runtime JIT compilation (FlashInfer, torch
+# cpp_extension, custom kernels). Without it, nvcc resolves to the default env's
+# CUDA 12.4 and links against libcudart.so.12, which is absent in this cu130
+# env -> ninja/"libcudart.so.12 not found" build errors. Must match torch's
+# CUDA (2.11.0+cu130 => 13.x).
+cuda-version = "13.*"
+cuda-toolkit = { version = "13.*", channel = "nvidia" }
+
+[tool.pixi.feature.vllm.activation.env]
+# Ensure torch's cpp_extension picks this env's toolkit, not the default env's
+# CUDA 12.4 that may still be on PATH via direnv/.envrc.
+CUDA_HOME = "$CONDA_PREFIX"
+# FlashInfer/torch JIT link against -lcuda / -lcudart in `$CUDA_HOME/lib64[/stubs]`,
+# but this conda env keeps libs in `lib`, not `lib64`. Point LIBRARY_PATH at the
+# real lib + driver-stub dirs so `ld` resolves libcuda.so/libcudart.so at link
+# time (the stub libcuda.so is a link-time placeholder; the real driver loads at
+# runtime).
+LIBRARY_PATH = "$CONDA_PREFIX/lib:$CONDA_PREFIX/lib/stubs:$CONDA_PREFIX/targets/x86_64-linux/lib/stubs"
+# JIT-built kernels are compiled with this env's gcc 15 and need its newer
+# libstdc++ (GLIBCXX_3.4.32+). Without this the loader falls back to the older
+# system libstdc++.so.6 -> "GLIBCXX_3.4.32 not found" when dlopen-ing them.
+LD_LIBRARY_PATH = "$CONDA_PREFIX/lib"
+
+[tool.pixi.feature.vllm.pypi-dependencies]
+# Pin a modern floor: with fashion's deps present, pixi's resolver otherwise
+# settles on vLLM 0.8.5 (torch 2.6, no qwen3_5). uv confirms 0.24 resolves with
+# all of fashion's deps, so the floor just steers pixi to it.
+vllm = ">=0.24.0"
+fashion = { path = ".", editable = true }
+pandas = "*"
+nltk = "*"
+pyarrow = "*"
+ipdb = "*"
 
 [tool.pixi.environments]
 default = ["modern"]
 booknlp = ["booknlp"]
+vllm = { features = ["vllm"], no-default-feature = true }
 
 
 [tool.basedpyright]

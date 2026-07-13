@@ -14,6 +14,82 @@ Utility functions that are shared across files are in the `analysis/utils.py` fi
 
 ## Scripts
 
+### `logodds.py`
+
+Computes corpus-level (no temporal split) Monroe et al. (2008) Dirichlet-prior log-odds
+of each character adjective being associated with each fashion term. Character adjectives
+are the "words" and fashion terms are the "documents". Counts unique (book_id, character_id)
+pairs per (term, adjective) combination to avoid inflating counts from repeated mentions.
+Also collects example sentences for each top (term, adjective) pair.
+
+```
+python -m fashion.analysis.logodds [--debug] [--top-terms N] [--top-adj N]
+                                    [--min-count N] [--max-examples N]
+                                    [--col-doc COLUMN] [--col-word COLUMN]
+```
+
+Output: `data/analysis/logodds/logodds.json`
+
+JSON fields: `terms` (list of fashion terms), `logodds` (list of records with
+`term`, `adjective`, `logodds`, `sigma`, `score`, `count`), `examples`
+(dict `{term: {adjective: [sentences]}}`).
+
+### `llm_showtell.py`
+
+**Runtime**: To run on the debug set of 100,000 rows on 2 L40s for Qwen3-8B, it
+took 5:55:49.
+
+There are 4,039,248 rows in the full `final_for_analysis.parquet` dataset, so
+that would take roughly 10 days all in (40 x 6 = 240 hours). But I think this
+does make it seem like running on one of the UIUC servers might actually be
+tractable; if we have an H100 node, I suspect we could finish running quite
+quickly...
+
+Uses an LLM to generate adjectival descriptions of each character mention, given
+the surrounding passage (with the character span wrapped in `**asterisks**`).
+Inference runs against a **separately launched** vLLM OpenAI-compatible server;
+the script fires requests concurrently and relies on vLLM's continuous batching
+for throughput.
+
+The server is constrained (via `response_format` guided decoding) to emit
+`{"adjectives": [{"word", "reasoning"}, ...]}`, which the client parses before
+storing.
+
+Prompt-building and inference are pipelined: a process pool builds each book's
+prompts in parallel (loading the text and Punkt-tokenizing it once per book),
+and prompts flow onto a bounded queue that `--concurrency` async consumers drain
+as soon as each book is ready — so inference on the first ready book overlaps
+with tokenizing the rest instead of waiting for every prompt up front.
+
+First launch the server (in the `vllm` pixi env), e.g.:
+
+```
+vllm serve Qwen/Qwen3-8B --reasoning-parser qwen3 --max-model-len 8192 --port 8000
+```
+
+Then run:
+
+```
+python -m fashion.analysis.llm_showtell [--debug] [--base-url URL] [--model NAME]
+                                        [--concurrency N] [--loader-workers N]
+                                        [--max-tokens N] [--temperature T]
+                                        [--no-thinking] [--thinking-budget N]
+                                        [--max-retries N]
+```
+
+`--thinking-budget` caps reasoning at N tokens before the model is forced to
+answer (default 512, `-1` for unlimited); it requires the server to be launched
+with `--reasoning-parser qwen3` and is ignored under `--no-thinking`.
+
+Output: `data/analysis/llm_showtell/descriptions.parquet` (written at the end),
+plus `descriptions.jsonl` which is appended to as each request completes (a
+progress bar tracks completion) so partial results survive an interrupted run.
+
+Columns: `row_id`, `prompt`, `reasoning` (Qwen3 thinking trace, `None` if
+disabled), `adjectives` (parsed list of `{word, reasoning}` objects, `None` if
+the reply could not be parsed or the request failed), `response` (raw model text,
+kept for debugging parse failures; `None` if the request failed after retries).
+
 ### `black_fashion.py`
 
 Extracts all passages where a fashion item is described as "black" into a TSV,

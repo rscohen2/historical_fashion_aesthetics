@@ -5,6 +5,7 @@ const pages = [
   { to: '/', label: 'Home' },
   { to: '/gender-classifier', label: 'Gender Classifier' },
   { to: '/adjective-categories', label: 'Adjective Categories' },
+  { to: '/log-odds', label: 'Log-Odds' },
 ]
 
 export default function Nav() {
