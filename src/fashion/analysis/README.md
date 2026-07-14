@@ -34,6 +34,30 @@ JSON fields: `terms` (list of fashion terms), `logodds` (list of records with
 `term`, `adjective`, `logodds`, `sigma`, `score`, `count`), `examples`
 (dict `{term: {adjective: [sentences]}}`).
 
+### `load_passages.py`
+
+The *loading* half of the show-tell pipeline. Opens each book once, Punkt-
+tokenizes it, and slices out the passage of sentences enclosing every character
+mention (the target sentence ± 3 sentences on each side). Books are processed in
+a parallel process pool, since text loading (disk I/O) and tokenization (CPU) are
+the slow parts. Rows whose span has no enclosing sentence are dropped.
+
+Output is a compact parquet of passage text plus the **book-level byte offsets**
+needed to build a prompt downstream, so tokenization runs once and inference can
+be re-run (different model, prompt, sampling) without redoing it.
+
+```
+python -m fashion.analysis.load_passages [--debug] [--workers N]
+```
+
+Output: `data/analysis/llm_showtell/passages.parquet` (or `passages_debug.parquet`
+under `--debug`).
+
+Columns: `row_id` (position in the input parquet), `book_id`, `passage` (text),
+`passage_start_idx`/`passage_end_idx`, `character_start_idx`/`character_end_idx`,
+`fashion_start_idx`/`fashion_end_idx` — all offsets are book-level byte offsets
+into the original text.
+
 ### `llm_showtell.py`
 
 **Runtime**: To run on the debug set of 100,000 rows on 2 L40s for Qwen3-8B, it
@@ -45,8 +69,9 @@ does make it seem like running on one of the UIUC servers might actually be
 tractable; if we have an H100 node, I suspect we could finish running quite
 quickly...
 
-Uses an LLM to generate adjectival descriptions of each character mention, given
-the surrounding passage (with the character span wrapped in `**asterisks**`).
+The *inference* half of the pipeline; run `load_passages.py` first. Uses an LLM
+to generate adjectival descriptions of each character mention, given the
+surrounding passage (with the character span wrapped in `**asterisks**`).
 Inference runs against a **separately launched** vLLM OpenAI-compatible server;
 the script fires requests concurrently and relies on vLLM's continuous batching
 for throughput.
@@ -55,11 +80,10 @@ The server is constrained (via `response_format` guided decoding) to emit
 `{"adjectives": [{"word", "reasoning"}, ...]}`, which the client parses before
 storing.
 
-Prompt-building and inference are pipelined: a process pool builds each book's
-prompts in parallel (loading the text and Punkt-tokenizing it once per book),
-and prompts flow onto a bounded queue that `--concurrency` async consumers drain
-as soon as each book is ready — so inference on the first ready book overlaps
-with tokenizing the rest instead of waiting for every prompt up front.
+Passages are **streamed** off the parquet in batches (so the whole corpus is
+never held in memory); each row's prompt is built on the fly (subtracting the
+passage start offset to place the `**` around the character span) and pushed onto
+a bounded queue that `--concurrency` async consumers drain, calling the server.
 
 First launch the server (in the `vllm` pixi env), e.g.:
 
@@ -71,7 +95,7 @@ Then run:
 
 ```
 python -m fashion.analysis.llm_showtell [--debug] [--base-url URL] [--model NAME]
-                                        [--concurrency N] [--loader-workers N]
+                                        [--concurrency N] [--batch-size N]
                                         [--max-tokens N] [--temperature T]
                                         [--no-thinking] [--thinking-budget N]
                                         [--max-retries N]

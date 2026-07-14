@@ -9,83 +9,23 @@ vLLM OpenAI-compatible server that you launch yourself, e.g.::
         --max-model-len 8192 \
         --port 8000
 
-The client fires many requests concurrently (bounded by ``--concurrency``) and
-lets vLLM's continuous batching keep the GPU saturated, so we still get
-high-throughput inference without hosting the model here.
+Input is the passages parquet produced by ``load_passages.py`` (run that first).
+Rows are streamed off disk in batches so we never hold the whole corpus in
+memory, each row's prompt is built on the fly, and the client fires many requests
+concurrently (bounded by ``--concurrency``). vLLM's continuous batching keeps the
+GPU saturated, so we still get high-throughput inference without hosting the model
+here.
 """
 
 import asyncio
 import json
-import os
-from bisect import bisect_left, bisect_right
-from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
 
-import pandas as pd
-from nltk.tokenize import PunktSentenceTokenizer
+import pyarrow.parquet as pq
 from openai import AsyncOpenAI
 from tqdm import tqdm
 
+from fashion.analysis.load_passages import passages_path
 from fashion.paths import DATA_DIR
-from fashion.sources import HathiAll
-
-# Punkt is unsupervised and rule-based, so it is much faster than a neural
-# sentence segmenter (spacy/stanza) while being accurate enough for trimming
-# context. Instantiate once and reuse across calls.
-_SENTENCE_TOKENIZER = PunktSentenceTokenizer()
-
-# Cached per worker process: HathiAll() stats every book listed in all.txt on
-# construction, so we build it lazily once and reuse it for all books a worker
-# handles instead of paying that cost per book.
-_SOURCE = None
-
-
-def _get_source():
-    global _SOURCE
-    if _SOURCE is None:
-        _SOURCE = HathiAll()
-    return _SOURCE
-
-
-@dataclass
-class Passage:
-    text: str
-    start_idx: int
-    end_idx: int
-
-
-def find_enclosing_sentences(
-    text, spans, start_idx, end_idx, max_sentences=1
-) -> Passage | None:  #
-    """
-    Return the passage of ``text`` covering the sentence(s) that overlap
-    ``[start_idx, end_idx)`` plus up to ``max_sentences`` sentences on each side.
-
-    The result is a byte-accurate slice of ``text`` (from the start offset of
-    the first kept sentence to the end offset of the last), so all original
-    whitespace and character offsets are preserved. Returns ``None`` if no
-    sentence overlaps the span.
-    """
-    # Punkt spans are sorted and non-overlapping, so the sentences overlapping
-    # [start_idx, end_idx) form a contiguous range. Both endpoints of that range
-    # are found by binary search instead of scanning every span:
-    #   first = first sentence whose end is past start_idx (ends are ascending)
-    #   last  = last sentence whose start is before end_idx (starts are ascending)
-    first = bisect_right(spans, start_idx, key=lambda span: span[1])
-    last = bisect_left(spans, end_idx, key=lambda span: span[0]) - 1
-    if first > last:  # empty text, or the span falls between/outside sentences
-        return None
-
-    lo = max(0, first - max_sentences)
-    hi = min(len(spans) - 1, last + max_sentences)
-    passage_start_idx = spans[lo][0]
-    passage_end_idx = spans[hi][1]
-    return Passage(
-        text=text[passage_start_idx:passage_end_idx],
-        start_idx=passage_start_idx,
-        end_idx=passage_end_idx,
-    )
-
 
 PROMPT = (
     "You are a close reader of literature. "
@@ -133,38 +73,31 @@ RESPONSE_FORMAT = {
 }
 
 
-def build_book_prompts(book_id, book_df):
-    """Load one book, tokenize it once, and build the prompt for each of its rows.
+def build_prompt(row):
+    """Build the chat message for one passage row from ``load_passages.py``.
 
-    Runs in a worker process (see ``run``): loading the text (disk I/O) and Punkt
-    tokenization (CPU-bound, holds the GIL) are the slow parts, and doing them
-    per book lets the process pool parallelize across books. Returns a list of
-    ``(row_id, message)`` where ``message`` is ``None`` when no sentence encloses
-    the character span, so the caller can report the skip.
+    The stored offsets are book-level, so subtract the passage start to get the
+    character span's position within the passage text, then wrap it in ``**`` so
+    the model knows which character to describe.
     """
-    text = _get_source().load_text(book_id).text
-    spans = list(_SENTENCE_TOKENIZER.span_tokenize(text))
-    prompts = []
-    for row_id, row in book_df.iterrows():
-        passage = find_enclosing_sentences(
-            text, spans, row.sentence_start_idx, row.sentence_end_idx, max_sentences=3
-        )
-        if passage is None:
-            prompts.append((row_id, None))
-            continue
-        c_start = int(row.character_start_idx - passage.start_idx)
-        c_end = int(row.character_end_idx - passage.start_idx)
-        bracketed = (
-            passage.text[:c_start]
-            + "**"
-            + passage.text[c_start:c_end]
-            + "**"
-            + passage.text[c_end:]
-        )
-        prompts.append(
-            (row_id, {"role": "user", "content": PROMPT.format(text=bracketed)})
-        )
-    return prompts
+    passage = row["passage"]
+    c_start = int(row["character_start_idx"] - row["passage_start_idx"])
+    c_end = int(row["character_end_idx"] - row["passage_start_idx"])
+    bracketed = (
+        passage[:c_start] + "**" + passage[c_start:c_end] + "**" + passage[c_end:]
+    )
+    return {"role": "user", "content": PROMPT.format(text=bracketed)}
+
+
+def stream_rows(parquet_path, batch_size):
+    """Yield passage rows as dicts, reading the parquet in batches off disk.
+
+    Streaming keeps memory bounded regardless of corpus size, so a fast reader
+    can't materialize millions of rows ahead of slower inference.
+    """
+    parquet_file = pq.ParquetFile(parquet_path)
+    for batch in parquet_file.iter_batches(batch_size=batch_size):
+        yield from batch.to_pylist()
 
 
 async def describe_one(client, args, row_id, message):
@@ -224,41 +157,23 @@ async def describe_one(client, args, row_id, message):
     }
 
 
-async def run(args, df, jsonl_path):
-    """Pipeline prompt-building and inference so requests start ASAP.
+async def run(args, parquet_path, total, jsonl_path):
+    """Pipeline passage streaming and inference so requests start ASAP.
 
-    A process pool builds each book's prompts in parallel (``build_book_prompts``);
-    as each book finishes, its prompts are pushed onto a bounded queue that a pool
-    of ``--concurrency`` consumer tasks drains, calling the vLLM server. So
-    inference on the first ready book overlaps with tokenizing the rest instead of
-    waiting for every prompt to be built up front. Results are appended to
-    ``jsonl_path`` the moment each request finishes.
+    A producer streams passage rows off disk, builds each prompt, and pushes it
+    onto a bounded queue that a pool of ``--concurrency`` consumer tasks drains,
+    calling the vLLM server. Results are appended to ``jsonl_path`` the moment
+    each request finishes.
     """
     client = AsyncOpenAI(base_url=args.base_url, api_key=args.api_key)
-    # Bound the queue so a fast loader can't build an unbounded prompt backlog
+    # Bound the queue so a fast reader can't build an unbounded prompt backlog
     # ahead of slower inference (backpressure), while keeping consumers fed.
     queue = asyncio.Queue(maxsize=args.concurrency * 4)
-    groups = [(book, rows) for book, rows in df.groupby("book_id")]
     results = []
 
     async def produce():
-        loop = asyncio.get_running_loop()
-        with ProcessPoolExecutor(max_workers=args.loader_workers) as pool:
-            futures = [
-                loop.run_in_executor(pool, build_book_prompts, book, book_df)
-                for book, book_df in groups
-            ]
-            for future in asyncio.as_completed(futures):
-                try:
-                    book_prompts = await future
-                except Exception as error:  # noqa: BLE001 - skip a book we can't load
-                    print(f"Failed to build prompts for a book: {error}")
-                    continue
-                for row_id, message in book_prompts:
-                    if message is None:
-                        print(f"Row ID: {row_id} - No passage found.")
-                        continue
-                    await queue.put((row_id, message))
+        for row in stream_rows(parquet_path, args.batch_size):
+            await queue.put((row["row_id"], build_prompt(row)))
         # One sentinel per consumer so each one exits after the queue drains.
         for _ in range(args.concurrency):
             await queue.put(None)
@@ -279,13 +194,13 @@ async def run(args, df, jsonl_path):
                 queue.task_done()
 
     print(
-        f"Building prompts ({args.loader_workers} workers) and inferring "
-        f"(concurrency={args.concurrency}) in parallel..."
+        f"Streaming passages and inferring (concurrency={args.concurrency}) "
+        "in parallel..."
     )
     try:
         with (
             open(jsonl_path, "w") as jsonl_file,
-            tqdm(desc="describing", total=len(df)) as progress,
+            tqdm(desc="describing", total=total) as progress,
         ):
             consumers = [
                 asyncio.create_task(consume(jsonl_file, progress))
@@ -299,20 +214,25 @@ async def run(args, df, jsonl_path):
 
 
 def main(args):
-    input_path = (
-        DATA_DIR / "sample_for_analysis.parquet"
-        if args.debug
-        else DATA_DIR / "final_for_analysis.parquet"
-    )
+    input_path = passages_path(args.debug)
+    if not input_path.exists():
+        raise FileNotFoundError(
+            f"{input_path} not found. Run `python -m fashion.analysis.load_passages"
+            f"{' --debug' if args.debug else ''}` first."
+        )
 
-    df = pd.read_parquet(input_path).reset_index()
+    # num_rows comes from the parquet footer, so the progress bar gets an exact
+    # total without materializing the file.
+    total = pq.ParquetFile(input_path).metadata.num_rows
 
     output_dir = DATA_DIR / "analysis" / "llm_showtell"
     output_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = output_dir / "descriptions.jsonl"
     output_path = output_dir / "descriptions.parquet"
 
-    results = asyncio.run(run(args, df, jsonl_path))
+    results = asyncio.run(run(args, input_path, total, jsonl_path))
+
+    import pandas as pd
 
     pd.DataFrame(results).to_parquet(output_path, index=False)
     print(f"Wrote {len(results)} descriptions to {output_path}")
@@ -321,12 +241,12 @@ def main(args):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Fashion Passage Loader")
+    parser = argparse.ArgumentParser(description="Fashion LLM Show-Tell")
     parser.add_argument(
         "--debug",
         "-d",
         action="store_true",
-        help="Use sample_for_analysis.parquet instead of final_for_analysis.parquet.",
+        help="Read passages_debug.parquet instead of passages.parquet.",
     )
     parser.add_argument(
         "--base-url",
@@ -350,10 +270,10 @@ if __name__ == "__main__":
         help="Max in-flight requests; vLLM batches these server-side.",
     )
     parser.add_argument(
-        "--loader-workers",
+        "--batch-size",
         type=int,
-        default=min(8, os.cpu_count() or 1),
-        help="Worker processes that build prompts (tokenize books) in parallel.",
+        default=1024,
+        help="Rows read per parquet batch while streaming passages.",
     )
     parser.add_argument(
         "--max-tokens",
