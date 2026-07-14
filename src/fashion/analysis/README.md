@@ -69,12 +69,19 @@ does make it seem like running on one of the UIUC servers might actually be
 tractable; if we have an H100 node, I suspect we could finish running quite
 quickly...
 
-The *inference* half of the pipeline; run `load_passages.py` first. Uses an LLM
-to generate adjectival descriptions of each character mention, given the
-surrounding passage (with the character span wrapped in `**asterisks**`).
-Inference runs against a **separately launched** vLLM OpenAI-compatible server;
-the script fires requests concurrently and relies on vLLM's continuous batching
-for throughput.
+Running `load_passages.py` generates parquet files in the correct locations.
+This requires Hathitrust files to exist, so Naitian runs this on David's lab
+servers and provides the files --- Becca does not need to run this script (and
+should instead use `{passages,passages_debug}.parquet` from the Google drive
+(in `data/`). The scripts expects the `data/analysis/llm_showtell` directory to
+exist. The parquet files should be placed in this directory.
+
+
+Uses an LLM to generate adjectival descriptions of each character mention,
+given the surrounding passage (with the character span wrapped in
+`**asterisks**`). Inference runs against a **separately launched** vLLM
+OpenAI-compatible server; the script fires requests concurrently and relies on
+vLLM's continuous batching for throughput.
 
 The server is constrained (via `response_format` guided decoding) to emit
 `{"adjectives": [{"word", "reasoning"}, ...]}`, which the client parses before
