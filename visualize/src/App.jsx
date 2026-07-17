@@ -4,6 +4,7 @@ import Home from './pages/Home.jsx'
 import GenderClassifier from './pages/GenderClassifier.jsx'
 import AdjectiveCategories from './pages/AdjectiveCategories.jsx'
 import LogOdds from './pages/LogOdds.jsx'
+import UniqueItems from './pages/UniqueItems.jsx'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/gender-classifier" element={<GenderClassifier />} />
           <Route path="/adjective-categories" element={<AdjectiveCategories />} />
           <Route path="/log-odds" element={<LogOdds />} />
+          <Route path="/unique-items" element={<UniqueItems />} />
         </Routes>
       </main>
     </div>

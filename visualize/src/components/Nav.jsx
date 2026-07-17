@@ -6,6 +6,7 @@ const pages = [
   { to: '/gender-classifier', label: 'Gender Classifier' },
   { to: '/adjective-categories', label: 'Adjective Categories' },
   { to: '/log-odds', label: 'Log-Odds' },
+  { to: '/unique-items', label: 'Unique Items' },
 ]
 
 export default function Nav() {

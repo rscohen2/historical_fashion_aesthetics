@@ -11,6 +11,16 @@ const pages = [
     title: 'Adjective Categories',
     description: 'Distribution of semantic adjective categories applied to fashion descriptions in the corpus.',
   },
+  {
+    to: '/log-odds',
+    title: 'Character Adjective Log-Odds',
+    description: 'Which character adjectives are statistically associated with each fashion term across the corpus.',
+  },
+  {
+    to: '/unique-items',
+    title: 'Unique Items',
+    description: 'The most fashion-y characters, explorable as cards, with a scatter of fashion mentions against distinct items.',
+  },
 ]
 
 export default function Home() {

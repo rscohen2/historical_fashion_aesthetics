@@ -34,6 +34,43 @@ JSON fields: `terms` (list of fashion terms), `logodds` (list of records with
 `term`, `adjective`, `logodds`, `sigma`, `score`, `count`), `examples`
 (dict `{term: {adjective: [sentences]}}`).
 
+### `unique_items.py`
+
+Builds per-character "unique items" fashion profiles for the interactive
+*Unique Items* page in `visualize/`. Mirrors the notebook's *Unique items*
+section: for every character (`book_id`, `character_id`) it measures `num_mentions`
+(total fashion mentions), `num_distinct` (distinct items worn), and `ratio`
+(mentions ÷ distinct), and produces three ranking lists from these. For a bounded
+pool of the most fashion-y characters (the union of each ranking's top cards and
+the top `--scatter-n` by mention count) it also collects the top clothing items,
+fashion adjectives, character adjectives, and the context sentences for each item,
+so the front-end can expand a card down to the passage level and render a
+scatter of mentions vs. distinct items.
+
+Narrator / non-character narration (BookNLP `character_id == 0`) is *kept* and
+flagged with `is_narrator` so the interface can toggle it on or off (the notebook's
+`include_narr` default was off). Because narrators dominate the raw counts, each
+ranking/scatter pool is the union of the top-N over all characters and the top-N
+over non-narrators, so the interface still has a full top-N whichever way the
+narrator toggle is set.
+
+```
+python -m fashion.analysis.unique_items [--debug] [--top-cards N] [--scatter-n N]
+                                         [--min-mentions N] [--top-clothes N]
+                                         [--top-adjs N] [--max-sentences N]
+```
+
+Output: `data/analysis/unique_items/unique_items.json`
+
+JSON fields: `config` (the knobs above), `characters` (dict keyed by
+`"{book_id}::{character_id}"` with `title`, `author`, `gender`, `is_narrator`,
+`num_mentions`, `num_distinct`, `ratio`, `top_clothes`, `fashion_adjs`,
+`char_adjs`, and `sentences` = `{item: [context sentences]}`), `rankings`
+(`most_mentions`,
+`most_distinct`, `most_repeated`, each a list of character ids), and `scatter`
+(list of character ids plotted on the scatter). Every ranking/scatter id has a
+full entry in `characters`.
+
 ### `load_passages.py`
 
 The *loading* half of the show-tell pipeline. Opens each book once, Punkt-
