@@ -1,0 +1,3 @@
+[submodule "vendor/dictionary_learning"]
+	path = vendor/dictionary_learning
+	url = git@github.com:naitian/dictionary_learning.git

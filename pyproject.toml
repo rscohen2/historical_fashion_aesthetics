@@ -4,7 +4,7 @@ description = "Add a short description here"
 name = "fashion"
 requires-python = ">= 3.11"
 version = "0.1.0"
-dependencies = ["ray>=2.44.1,<3", "pyloess>=0.1.0,<0.2", "little-mallet-wrapper>=0.5.0,<0.6", "stanza>=1.10.1,<2", "krippendorff>=0.8.1,<0.9", "ht-text-prep>=1.2,<2", "altair>=6.0.0,<7", "vl-convert-python>=1.9.0.post1,<2", "lda>=3.0.2,<4", "pandas-stubs>=3.0.0.260204,<4", "pyro-ppl>=1.9.1,<2"]
+dependencies = ["ray>=2.44.1,<3", "pyloess>=0.1.0,<0.2", "little-mallet-wrapper>=0.5.0,<0.6", "stanza>=1.15.0,<2", "krippendorff>=0.8.1,<0.9", "ht-text-prep>=1.2,<2", "altair>=6.0.0,<7", "vl-convert-python>=1.9.0.post1,<2", "lda>=3.0.2,<4", "pandas-stubs>=3.0.0.260204,<4", "pyro-ppl>=1.9.1,<2", "umap-learn>=0.5.12,<0.6", "pandas", "datashader>=0.19.1,<0.20", "bokeh>=3.9.2,<4", "holoviews>=1.23.2,<2", "colorcet>=3.2.1,<4", "scikit-image>=0.26.0,<0.27", "rapidfuzz>=3.14.6,<4", "sentence-transformers>=5.7.0,<6", "duckdb", "polars>=2.1.0,<3", "networkx==3.4.2"]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -16,6 +16,7 @@ platforms = ["linux-64"]
 
 [tool.pixi.pypi-dependencies]
 fashion = { path = ".", editable = true }
+dictionary-learning = { path = "vendor/dictionary_learning", editable = true }
 
 [tool.pixi.tasks]
 
@@ -32,6 +33,7 @@ llm = ">=0.25,<0.26"
 pydantic = ">=2.11.4,<3"
 pytest = ">=8.4.0,<9"
 jq = ">=1.8.0,<2"
+duckdb = "*"
 
 [tool.pixi.feature.modern.dependencies]
 pytorch = {version = "2.*", channel="pytorch"}

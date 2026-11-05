@@ -1,13 +1,11 @@
 import argparse
 import itertools
-import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
 import stanza
-from google.protobuf import json_format
 from stanza.server.semgrex import Semgrex
 from tqdm import tqdm
 
@@ -104,9 +102,9 @@ def create_pairs(
         elif relname == "not":
             negations.add(match_dict["adjective"])
 
-    for adj in description:
+    for adj, described in description.items():
         negation = adj in negations
-        noun = get_compound(compound, description[adj])
+        noun = get_compound(compound, described)
         pairs.add(
             AdjectivePair(
                 adjective=adj,
@@ -115,11 +113,11 @@ def create_pairs(
             )
         )
 
-    for adj in conj:
-        if conj[adj] not in description:
+    for adj, conj_adj in conj.items():
+        if conj_adj not in description:
             continue
-        negation = adj in negations or conj[adj] in negations
-        noun = get_compound(compound, description[conj[adj]])
+        negation = adj in negations or conj_adj in negations
+        noun = get_compound(compound, description[conj_adj])
         pairs.add(
             AdjectivePair(
                 adjective=adj,
@@ -152,6 +150,7 @@ class StanzaProcessor(Processor):
             "en",
             processors="tokenize,pos,lemma,depparse"
             + (",coref" if self.do_coref else ""),
+            use_gpu=True,
         )
         self.patterns = [
             # The red dress
@@ -226,43 +225,62 @@ class StanzaProcessor(Processor):
         return coref_spans
 
     def match_batch(self, lines: list[str]) -> list[list[Match]]:
-        in_docs = [stanza.Document([], text=d.strip()) for d in lines]
-        docs = self.nlp(in_docs)
+        in_docs = [stanza.Document([], text=d) for d in lines]
+        docs = self.nlp(in_docs, processors="tokenize,pos,lemma,depparse")
 
         matches: list[list[Match]] = []
-        for doc in docs:
-            stanza_matches = self.semgrex.process(
-                doc,
-                *self.patterns,
-            )
-            stanza_matches = json_format.MessageToDict(stanza_matches)
+
+        # combine sentences to do a single semgrex roundtrip
+        combined_sentences = [sent for doc in docs for sent in doc.sentences]
+        sentence_splits = [len(doc.sentences) for doc in docs]
+        combined_doc = stanza.Document([])
+        combined_doc.sentences = combined_sentences
+        stanza_matches = self.semgrex.process(
+            combined_doc,
+            *self.patterns,
+        )
+        # use sentence_splits to split the matches back into per-document
+        # matches
+        per_doc_matches = []
+        start_idx = 0
+        for split in sentence_splits:
+            per_doc_matches.append(stanza_matches.sentence[start_idx : start_idx + split])
+            start_idx += split
+
+        for doc_ind, doc in enumerate(docs):
+            if self.do_coref:
+                try:
+                    self.nlp.processors["coref"].process(doc)
+                except ValueError as e:
+                    print(f"Error processing coref for doc {doc_ind}: {e}")
+                    print(f"Doc text: {doc.text}")
+                    continue
+            corefs = self.get_coref_from_chains(doc)
+            coref_spans = self.get_coref_spans(doc, corefs)
+
+            sentences = per_doc_matches[doc_ind]
             doc_matches: list[Match] = []
 
-            for sentence_ind, result in enumerate(stanza_matches["result"]):
-                for match in result["result"]:
-                    if "match" not in match:
-                        continue
-                    for m in match["match"]:
-                        relname = m["reln"][0]["name"]
-
-                        corefs = self.get_coref_from_chains(doc)
-                        coref_spans = self.get_coref_spans(doc, corefs)
+            for sentence_ind, sentence in enumerate(sentences):
+                for match in sentence.pattern:
+                    for m in match.match:
+                        relname = m.reln[0].name
 
                         nodes = []
-                        for stanza_node in m["node"]:
+                        for stanza_node in m.node:
                             stanza_word = self.get_word(
-                                doc, sentence_ind, stanza_node["matchIndex"] - 1
+                                doc, sentence_ind, stanza_node.matchIndex - 1
                             )
-                            if (sentence_ind, stanza_node["matchIndex"] - 1) in corefs:
+                            if (sentence_ind, stanza_node.matchIndex - 1) in corefs:
                                 node_corefs = coref_spans[
                                     corefs[
-                                        (sentence_ind, stanza_node["matchIndex"] - 1)
+                                        (sentence_ind, stanza_node.matchIndex - 1)
                                     ]
                                 ]
                             else:
                                 node_corefs = set()
                             node = Node(
-                                name=stanza_node["name"],
+                                name=stanza_node.name,
                                 span=Span(
                                     start_idx=stanza_word.start_char,
                                     end_idx=stanza_word.end_char,
@@ -336,72 +354,83 @@ def test():
         print()
 
 
-def process_file(mentions: pd.DataFrame, output_file: Path, do_coref: bool):
+def process_file(
+    mentions: pd.DataFrame, output_file: Path, processor: StanzaProcessor
+):
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    rows = list(mentions.itertuples())
 
-    results = []
-    processor = StanzaProcessor(do_coref)
-    if output_file.exists():
-        print(f"Output file {output_file} already exists. Skipping.")
-        return
-    batch_size = 8
+    sentence_idx, sentences = pd.factorize(mentions.sentence)
+
+    # we do this length check because of James Joyce's Ulysses.
+    def _filter_batch(sentences):
+        for index, sentence in enumerate(sentences):
+            if len(str(sentence)) < 1200:
+                yield index, sentence
+
+    def _is_overlapping(mention, pair):
+        if pair.corefs:
+            span_starts, span_ends = zip(
+                *[(coref.start_idx, coref.end_idx) for coref in pair.corefs]
+            )
+        else:
+            span_starts, span_ends = [pair.noun.start_idx], [pair.noun.end_idx]
+        overlap = get_overlap_rows_single(
+            (mention.start_idx, mention.end_idx),
+            (span_starts, span_ends),
+            partial=True,
+        )
+        return overlap
+
+    results = {}
+    batch_size = 512
     for batch in tqdm(
-        itertools.batched(rows, batch_size),
-        total=(len(rows) // batch_size) + 1,
+        itertools.batched(_filter_batch(sentences), batch_size),
+        total=(len(sentences) // batch_size) + 1,
     ):
-        # we do this length check because of James Joyce's Ulysses.
-        batch_texts = [
-            str(mention.sentence)
-            for mention in batch
-            if len(str(mention.sentence)) < 1200
-        ]
-        matches = processor.match_batch(batch_texts)
+        indices, batch_texts = zip(*batch)
+        matches = processor.match_batch(list(batch_texts))
         pairs = [create_pairs(doc_matches) for doc_matches in matches]
 
-        for mention, pairs in zip(batch, pairs):
-            if not pairs:
+        for index, mention_pairs in zip(indices, pairs):
+            if not mention_pairs:
                 continue
-            pairs = list(pairs)
-            for pair in pairs:
-                if pair.corefs:
-                    span_starts, span_ends = zip(
-                        *[(coref.start_idx, coref.end_idx) for coref in pair.corefs]
-                    )
-                else:
-                    span_starts, span_ends = [pair.noun.start_idx], [pair.noun.end_idx]
-                overlap = get_overlap_rows_single(
-                    (mention.start_idx, mention.end_idx),
-                    (span_starts, span_ends),
-                    partial=True,
-                )
-                if not overlap:
-                    continue
-                results.append(
-                    {
-                        "mention_id": mention.mention_id,
-                        "adjective": pair.adjective.text,
-                        "adjective_start_idx": pair.adjective.start_idx,
-                        "adjective_end_idx": pair.adjective.end_idx,
-                        "noun": pair.noun.text,
-                        "noun_start_idx": pair.noun.start_idx,
-                        "noun_end_idx": pair.noun.end_idx,
-                        "negated": pair.negated,
-                        "sentence": mention.sentence,
-                        "sentence_start_idx": mention.sentence_start_idx,
-                        "sentence_end_idx": mention.sentence_end_idx,
-                        "mention_start_idx": mention.start_idx,
-                        "mention_end_idx": mention.end_idx,
-                        "filename": mention.filename,
-                    }
-                )
+            results[index] = list(mention_pairs)
 
-    if results:
-        df = pd.DataFrame(results)
+    df_data = []
+    for og_index, mention in enumerate(
+        tqdm(mentions.itertuples(), total=len(mentions), desc="Compiling results")
+    ):
+        if sentence_idx[og_index] not in results:
+            continue
+        # sentence_idx[og_index] gives the index of the sentence in the unique
+        # sentences array -- which is also how we indexed the results. So we
+        # need to get the result for that sentence index.
+        pairs = results[sentence_idx[og_index]]
+        df_data.extend(
+            [
+                {
+                    "adjective": pair.adjective.text,
+                    "adjective_start_idx": pair.adjective.start_idx,
+                    "adjective_end_idx": pair.adjective.end_idx,
+                    "noun": pair.noun.text,
+                    "noun_start_idx": pair.noun.start_idx,
+                    "noun_end_idx": pair.noun.end_idx,
+                    "negated": pair.negated,
+                    "mention_id": mention.mention_id,
+                    "sentence_start_idx": mention.sentence_start_idx,
+                    "sentence_end_idx": mention.sentence_end_idx,
+                    "mention_start_idx": mention.start_idx,
+                    "mention_end_idx": mention.end_idx,
+                    "filename": mention.filename,
+                    "sentence": mention.sentence,
+                }
+                for pair in pairs
+                if _is_overlapping(mention, pair)
+            ]
+        )
+    if df_data:
+        df = pd.DataFrame(df_data)
         df.to_csv(output_file, index=False)
-
-    # free up memory
-    del processor
 
 
 def main(
@@ -410,28 +439,52 @@ def main(
     num_processes: int,
     concurrent_processes: int,
     do_coref: bool,
+    chunks_per_file: int = 1,
 ):
 
-    def process(subset: list[dict]):
-        print(f"Processing {len(subset)} files.")
-        mentions = pd.DataFrame(subset)
-        rank = int(os.environ.get("DISTRIBUTED_RANK", "0"))
-        process_file(
-            mentions,
-            output_dir / f"adjectives.{rank}.csv",
-            do_coref,
+    def output_file(noun_mention_file: Path, chunk: int) -> Path:
+        return output_dir / (
+            f"adjectives.{noun_mention_file.stem}.{chunk}of{chunks_per_file}.csv"
         )
 
-    mentions = pd.concat(
-        [
-            pd.read_csv(noun_mention_file)
-            for noun_mention_file in sorted(list(noun_mention_dir.glob("*.csv")))
-        ]
-    ).to_dict(orient="records")
+    def process(subset: list[tuple[Path, int]]):
+        # skip chunks that are already done so that retries / reruns resume
+        todo = [item for item in subset if not output_file(*item).exists()]
+        print(f"Processing {len(todo)} chunks ({len(subset) - len(todo)} done).")
+        if not todo:
+            return
+
+        chunks_by_file = defaultdict(list)
+        for noun_mention_file, chunk in todo:
+            chunks_by_file[noun_mention_file].append(chunk)
+
+        # load the model once per rank rather than once per chunk
+        processor = StanzaProcessor(do_coref)
+        for noun_mention_file, chunks in chunks_by_file.items():
+            mentions = pd.read_csv(noun_mention_file)
+            # chunk by unique sentence so that mentions sharing a sentence
+            # stay together and each sentence is only parsed once
+            sentence_chunk = pd.factorize(mentions.sentence)[0] % chunks_per_file
+            for chunk in chunks:
+                process_file(
+                    mentions[sentence_chunk == chunk],
+                    output_file(noun_mention_file, chunk),
+                    processor,
+                )
+
+        # free up memory
+        del processor
+
+    files = sorted(noun_mention_dir.glob("*.csv"))
+    items = [
+        (noun_mention_file, chunk)
+        for noun_mention_file in files
+        for chunk in range(chunks_per_file)
+    ]
 
     run_distributed(
         process,
-        mentions,
+        items,
         script_path=__file__,
         total_processes=num_processes,
         concurrent_processes=concurrent_processes,
@@ -440,8 +493,10 @@ def main(
             str(noun_mention_dir),
             "--output_dir",
             str(output_dir),
-            "--do_coref" if do_coref else "",
-        ],
+            "--chunks_per_file",
+            str(chunks_per_file),
+        ]
+        + (["--do_coref"] if do_coref else []),
     )
 
 
@@ -463,6 +518,13 @@ if __name__ == "__main__":
         type=Path,
         help="Path to the output file where results will be saved.",
     )
+    parser.add_argument(
+        "--chunks_per_file",
+        type=int,
+        default=1,
+        help="Split each noun mention file into this many chunks (by sentence) "
+        "so that a single large file can be spread across processes.",
+    )
     add_distributed_args(parser)
     args = parser.parse_args()
     main(
@@ -471,4 +533,5 @@ if __name__ == "__main__":
         args.num_processes,
         args.concurrent_processes,
         args.do_coref,
+        args.chunks_per_file,
     )

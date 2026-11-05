@@ -99,6 +99,14 @@ def run_distributed(
     if concurrent_processes <= 0:
         concurrent_processes = total_processes
 
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    if cuda_visible_devices is not None:
+        # if CUDA_VISIBLE_DEVICES is set, then we will restrict the available cuda devices to the ones specified in the environment variable.
+        cuda_visible_devices = cuda_visible_devices.split(",")
+    else:
+        # otherwise, we will use all available cuda devices (counting from 0 to torch.cuda.device_count() - 1)
+        cuda_visible_devices = [str(i) for i in range(torch.cuda.device_count())]
+
     rank = int(os.environ.get("DISTRIBUTED_RANK", "0"))
 
     def execute_work(rank: int):
@@ -112,8 +120,10 @@ def run_distributed(
 
     def spawn_process(rank: int):
         """Spawn a subprocess for the given rank."""
-        cuda_visible_devices = (
-            str(rank % torch.cuda.device_count()) if restrict_cuda else ""
+        cuda_visible_device = (
+            str(cuda_visible_devices[rank % len(cuda_visible_devices)])
+            if restrict_cuda
+            else None
         )
         proc = subprocess.Popen(
             [
@@ -131,7 +141,9 @@ def run_distributed(
             + extra_args,
             env={
                 **os.environ,
-                "CUDA_VISIBLE_DEVICES": cuda_visible_devices,
+                "CUDA_VISIBLE_DEVICES": cuda_visible_device
+                if cuda_visible_device is not None
+                else "",
                 "DISTRIBUTED_RANK": str(rank),
                 "DISTRIBUTED_WORLD_SIZE": str(total_processes),
             },
