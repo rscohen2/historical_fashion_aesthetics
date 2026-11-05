@@ -21,6 +21,21 @@ const pages = [
     title: 'Unique Items',
     description: 'The most fashion-y characters, explorable as cards, with a scatter of fashion mentions against distinct items.',
   },
+  {
+    to: '/adjective-trends',
+    title: 'Adjective Trends',
+    description: 'How fashion adjectives, fashion terms, and adjective + term pairs rise and fall by decade, with example sentences.',
+  },
+  {
+    to: '/sae-log-odds',
+    title: 'SAE Code Log-Odds',
+    description: 'Which LLM-labeled sparse autoencoder codes of sentence embeddings characterize each fashion item, with example sentences.',
+  },
+  {
+    to: '/sae-code-trends',
+    title: 'SAE Code Trends',
+    description: 'How often each SAE code fires per decade, broken down by the fashion items most associated with it.',
+  },
 ]
 
 export default function Home() {

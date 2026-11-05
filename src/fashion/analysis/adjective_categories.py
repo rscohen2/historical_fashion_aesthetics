@@ -52,24 +52,34 @@ def get_attribute_categories(
 
 
 def get_category_members(synset: Synset) -> list[Synset]:
-    members = []
-    for member in synset.member_holonyms():
-        members.append(member)
-    for member in synset.substance_holonyms():
-        members.append(member)
-    for member in synset.part_holonyms():
-        members.append(member)
-    return members
+    return [
+        *synset.member_holonyms(),
+        *synset.substance_holonyms(),
+        *synset.part_holonyms(),
+    ]
+
+
+def _sample_examples(group: pd.DataFrame, n: int = 10) -> list[dict]:
+    """Up to `n` of a group's sentences, as ``{s: sentence, bk: book_id}``."""
+    if len(group) > n:
+        group = group.sample(n)
+    return [{"s": s, "bk": bk} for s, bk in zip(group.sentences, group.book_ids)]
 
 
 def get_adjective_category_distribution(
-    adj_series: pd.Series, sentences: pd.Series | None = None
-) -> tuple[Counter, dict[str, set[str]], dict[tuple[str, str], list[str]]]:
+    adj_series: pd.Series,
+    sentences: pd.Series | None = None,
+    book_ids: pd.Series | None = None,
+) -> tuple[Counter, dict[str, set[str]], dict[tuple[str, str], list[dict]]]:
     if sentences is None:
-        sentences = pd.Series([None] * len(adj_series))
+        sentences = pd.Series([None] * len(adj_series), index=adj_series.index)
+    if book_ids is None:
+        book_ids = pd.Series([None] * len(adj_series), index=adj_series.index)
 
-    df = pd.DataFrame({"adjective": adj_series, "sentences": sentences})
-    df = df.explode("adjective").dropna()
+    df = pd.DataFrame(
+        {"adjective": adj_series, "sentences": sentences, "book_ids": book_ids}
+    )
+    df = df.explode("adjective").dropna(subset=["adjective"])
 
     term_adjs = df.adjective.str.lower().copy()
 
@@ -85,6 +95,7 @@ def get_adjective_category_distribution(
                 for category_synsets in adj_categories
             ],
             "sentences": df.sentences,
+            "book_ids": df.book_ids,
             # "categories": term_adjs.apply(lambda adj: get_attribute_categories(adj)),
         }
     )
@@ -94,10 +105,10 @@ def get_adjective_category_distribution(
     category_counts = Counter(exploded_categories.categories.dropna())
 
     category_adjective_sentence_map = (
-        exploded_categories.groupby(["categories", "adjective"])
-        .sentences.agg(
-            lambda x: x.sample(min(10, len(x))).tolist() if len(x) > 10 else x.tolist()
-        )
+        exploded_categories.groupby(["categories", "adjective"])[
+            ["sentences", "book_ids"]
+        ]
+        .apply(_sample_examples)
         .to_dict()
     )
 
@@ -125,9 +136,11 @@ def main(args) -> None:
         else DATA_DIR / "final_for_analysis.parquet"
     )
 
-    df = pd.read_parquet(input_path)
+    df = pd.read_parquet(input_path).reset_index()
     category_counts, category_to_term_map, category_adj_sentences = (
-        get_adjective_category_distribution(df.adjectives_fashion, df.sentence)
+        get_adjective_category_distribution(
+            df.adjectives_fashion, df.sentence, df.book_id
+        )
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

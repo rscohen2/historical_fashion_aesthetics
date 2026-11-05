@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
+import { toExample } from '../books.js'
+import BookCitation from '../components/BookCitation.jsx'
 
 function highlightTerm(sentence, term) {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -24,9 +26,10 @@ function SentencePanel({ category, term, sentences, onClose }) {
       </div>
       <p className="sentence-count">{sentences.length} example{sentences.length !== 1 ? 's' : ''}</p>
       <div className="sentence-list">
-        {sentences.map((s, i) => (
+        {sentences.map((ex, i) => (
           <blockquote key={i} className="sentence">
-            {highlightTerm(s.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(), term)}
+            {highlightTerm(ex.s.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(), term)}
+            <BookCitation id={ex.bk} />
           </blockquote>
         ))}
       </div>
@@ -45,12 +48,12 @@ export default function AdjectiveCategories() {
 
   useEffect(() => {
     Promise.all([
-      d3.csv('/data/category_counts.csv', (row) => ({
+      d3.csv(`${import.meta.env.BASE_URL}data/category_counts.csv`, (row) => ({
         category: row.category,
         count: +row.count,
         label: row.category.replace(/\.[a-z]\.\d+$/, ''),
       })),
-      fetch('/data/category_to_term_map.jsonl')
+      fetch(`${import.meta.env.BASE_URL}data/category_to_term_map.jsonl`)
         .then((r) => r.text())
         .then((text) =>
           text.trim().split('\n').reduce((acc, line) => {
@@ -148,7 +151,7 @@ export default function AdjectiveCategories() {
   }, [data, minCount, selected, selectCategory])
 
   const info = selected ? termMap[selected.category] : null
-  const sentences = activeTerm && info ? (info.example_sentences?.[activeTerm] ?? []) : []
+  const sentences = activeTerm && info ? (info.example_sentences?.[activeTerm] ?? []).map(toExample) : []
 
   return (
     <div>

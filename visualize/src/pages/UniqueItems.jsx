@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import * as d3 from 'd3'
+import { bookInfo, useBooks } from '../books.js'
 
 const RANKING_LABELS = {
   most_mentions: 'Most fashion mentions',
@@ -41,10 +42,13 @@ function GenderBadge({ gender }) {
 // scatter click-through, so it owns its own "which item is expanded" state.
 const CHAR_ADJ_COLLAPSED = 8
 
-function CharacterCard({ character, metric }) {
+function CharacterCard({ character, metric, books }) {
   const [openTerm, setOpenTerm] = useState(null)
   const [charAdjsOpen, setCharAdjsOpen] = useState(false)
   if (!character) return null
+
+  const book = bookInfo(books, character.book_id)
+  const byline = [book.author ?? 'Unknown author', book.year].filter((v) => v != null).join(' · ')
 
   const sentences = openTerm ? character.sentences?.[openTerm] ?? [] : []
   const charAdjs = charAdjsOpen
@@ -55,13 +59,13 @@ function CharacterCard({ character, metric }) {
   return (
     <div className="ui-card">
       <div className="ui-card-head">
-        <div className="ui-card-title">{character.title || '(untitled)'}</div>
+        <div className="ui-card-title" title={character.book_id}>{book.title || '(untitled)'}</div>
         <div className="ui-badges">
           {character.is_narrator && <span className="ui-narrator">Narrator</span>}
           <GenderBadge gender={character.gender} />
         </div>
       </div>
-      <div className="ui-card-author">{character.author || 'Unknown author'}</div>
+      <div className="ui-card-author">{books ? byline : '\u00a0'}</div>
 
       <div className="ui-stats">
         <span className={metric === 'num_mentions' ? 'ui-stat ui-stat-hi' : 'ui-stat'}>
@@ -155,11 +159,12 @@ export default function UniqueItems() {
   const [topN, setTopN] = useState(24)
   const [includeNarrators, setIncludeNarrators] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
+  const books = useBooks()
   const chartRef = useRef(null)
   const tooltip = useRef(null)
 
   useEffect(() => {
-    fetch('/data/unique_items.json')
+    fetch(`${import.meta.env.BASE_URL}data/unique_items.json`)
       .then((r) => r.json())
       .then(setData)
   }, [])
@@ -232,9 +237,11 @@ export default function UniqueItems() {
         tip.style.display = 'block'
         tip.style.left = event.clientX + 14 + 'px'
         tip.style.top = event.clientY - 10 + 'px'
+        const book = bookInfo(books, d.book_id)
         tip.innerHTML =
-          `<div class="ui-tt-title">${d.title || '(untitled)'}</div>` +
-          `<div class="ui-tt-sub">${d.author || 'Unknown'} · ${d.gender || 'unknown'}</div>` +
+          `<div class="ui-tt-title">${book.title || '(untitled)'}</div>` +
+          `<div class="ui-tt-sub">${[book.author || 'Unknown', book.year, d.gender || 'unknown']
+            .filter((v) => v != null).join(' · ')}</div>` +
           `<div class="ui-tt-stats">${d.num_mentions} mentions · ${d.num_distinct} distinct · ${d.ratio}/item</div>` +
           `<div class="ui-tt-clothes">${clothes}</div>`
       })
@@ -250,7 +257,7 @@ export default function UniqueItems() {
       .attr('x', -height / 2).attr('y', -42)
       .attr('text-anchor', 'middle').attr('font-size', 12).attr('fill', 'var(--text-muted)')
       .text('Distinct fashion items')
-  }, [data, selectedId, includeNarrators])
+  }, [data, selectedId, includeNarrators, books])
 
   if (!data) {
     return <div className="page-header"><p>Loading…</p></div>
@@ -302,7 +309,7 @@ export default function UniqueItems() {
 
       <div className="ui-card-grid">
         {cards.map((c) => (
-          <CharacterCard key={c.id} character={c} metric={RANKING_METRIC[ranking]} />
+          <CharacterCard key={c.id} character={c} metric={RANKING_METRIC[ranking]} books={books} />
         ))}
       </div>
 
@@ -327,7 +334,7 @@ export default function UniqueItems() {
             <button className="close-btn" onClick={() => setSelectedId(null)} aria-label="Close">✕</button>
           </div>
           <div className="ui-card-grid ui-card-grid-single">
-            <CharacterCard character={selected} metric={null} />
+            <CharacterCard character={selected} metric={null} books={books} />
           </div>
         </div>
       )}

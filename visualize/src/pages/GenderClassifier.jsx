@@ -14,7 +14,7 @@ export default function GenderClassifier() {
   const tooltip = useRef(null)
 
   useEffect(() => {
-    d3.tsv('/data/coefficients.tsv', (row) => ({
+    d3.tsv(`${import.meta.env.BASE_URL}data/coefficients.tsv`, (row) => ({
       decade: +row.decade,
       term: row.term,
       coefficient: +row.coefficient,

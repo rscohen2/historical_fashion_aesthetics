@@ -5,7 +5,17 @@ adjectives are statistically associated with each fashion term across the
 whole corpus (no temporal split). Character adjectives are the "words" and
 fashion terms are the "documents".
 
-Output: data/analysis/logodds/logodds.json
+Reproduces the two setups in notebooks/fashion_gender_classifier.ipynb:
+  - default (the corpus-wide cell): one count per mention per character
+    adjective, documents are lowercased `term`s.
+  - --gender {male,female} (the "Gender-controlled log-odds" cell): only that
+    gender's characters, one count per (book, character, term) using the first
+    mention's adjectives, documents are lowercased `term_stem`s.
+Both drop terms and adjectives seen fewer than --min-count times before the
+matrix is built, so they are excluded from the prior as well.
+
+Output: data/analysis/logodds/logodds.json (default)
+        data/analysis/logodds/logodds_{gender}.json (--gender)
 """
 
 import argparse
@@ -17,50 +27,64 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from fashion.analysis.utils import monroe_logodds
 from fashion.paths import DATA_DIR
 
 EXPERIMENT = "logodds"
 OUTPUT_DIR = DATA_DIR / "analysis" / EXPERIMENT
-DECADES = list(range(180, 192))
+DOC = "doc"
+WORD = "word"
+
+
+def prepare_units(df: pd.DataFrame, gender: str | None) -> pd.DataFrame:
+    """One row per counting unit, with its document label in `DOC`.
+
+    Corpus-wide, a unit is a mention (duplicates of a mention across characters
+    dropped). With `gender`, a unit is a (book, character, term) triple
+    reduced to its first mention, as in the notebook's gender-controlled cell.
+    """
+    df = df.drop_duplicates(subset=["book_id", "mention_id"])
+    if gender is None:
+        units = df.copy()
+        units[DOC] = units["term"].str.lower()
+    else:
+        units = (
+            df[df.gender_dep_pron.eq(gender)]
+            .groupby(["book_id", "character_id", "term"])
+            .agg("first")
+            .reset_index()
+        )
+        units[DOC] = units["term_stem"].str.lower()
+    return units
+
+
+def explode_pairs(units: pd.DataFrame, col_word: str, min_count: int) -> pd.DataFrame:
+    """(doc, word) pairs, one per unit per adjective, with rare docs/words dropped.
+
+    Terms and adjectives seen fewer than `min_count` times are removed before
+    the matrix is built, so they are left out of the prior too.
+    """
+    pairs = units[[DOC, col_word]].explode(col_word).dropna()
+    pairs = pairs.rename(columns={col_word: WORD})
+    pairs[WORD] = pairs[WORD].astype(str).str.lower()
+    doc_counts = pairs[DOC].value_counts()
+    word_counts = pairs[WORD].value_counts()
+    return pairs[
+        pairs[DOC].isin(doc_counts[doc_counts >= min_count].index)
+        & pairs[WORD].isin(word_counts[word_counts >= min_count].index)
+    ]
 
 
 def build_count_matrix(
-    df: pd.DataFrame,
-    col_doc: str,
-    col_word: str,
+    pairs: pd.DataFrame,
 ) -> tuple[np.ndarray, list[str], dict[str, int], list[str], dict[str, int]]:
-    """Build doc-term count matrix from unique (book_id, character_id) pairs.
-
-    Each (book_id, character_id, term) triplet contributes at most once per
-    character adjective, preventing the same character from inflating counts.
-    """
-    pair_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-
-    for (_book, _char, term), group in tqdm(
-        df.groupby(["book_id", "character_id", col_doc]),
-        desc="Building count matrix",
-    ):
-        all_adjs: set[str] = set()
-        for adjs in group[col_word]:
-            if isinstance(adjs, (list, np.ndarray)):
-                for adj in adjs:
-                    if adj is not None:
-                        all_adjs.add(str(adj).lower())
-        for adj in all_adjs:
-            pair_counts[str(term)][adj] += 1
-
-    docs = sorted(pair_counts.keys())
-    words: list[str] = sorted({w for adj_map in pair_counts.values() for w in adj_map})
-
+    """Doc-term count matrix: how many (doc, word) pairs share each cell."""
+    counts = pd.crosstab(pairs[DOC], pairs[WORD])
+    docs = [str(d) for d in counts.index]
+    words = [str(w) for w in counts.columns]
     doc2idx = {d: i for i, d in enumerate(docs)}
     word2idx = {w: i for i, w in enumerate(words)}
-
-    mat = np.zeros((len(docs), len(words)), dtype=np.float64)
-    for term, adj_counts in pair_counts.items():
-        for adj, count in adj_counts.items():
-            mat[doc2idx[term]][word2idx[adj]] = count
-
-    return mat, docs, doc2idx, words, word2idx
+    return counts.to_numpy(dtype=np.float64), docs, doc2idx, words, word2idx
 
 
 def compute_logodds(
@@ -71,21 +95,8 @@ def compute_logodds(
     term: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Monroe et al. (2008) Dirichlet-prior log-odds for one term vs. all others."""
-    term_idx = doc2idx[term]
-    other_idx = [i for i in range(len(docs)) if i != term_idx]
-
-    g1 = mat[term_idx]
-    g2 = mat[other_idx].sum(axis=0)
-    n1 = float(g1.sum())
-    n2 = float(g2.sum())
-    prior = mat.sum(axis=0)
-    n_prior = float(prior.sum())
-
-    odds1 = (g1 + prior) / ((n1 + n_prior) - (g1 + prior))
-    odds2 = (g2 + prior) / ((n2 + n_prior) - (g2 + prior))
-    delta = np.log(odds1) - np.log(odds2)
-    sigma = np.sqrt(1.0 / (g1 + prior) + 1.0 / (g2 + prior))
-    return delta, sigma
+    delta, sigma = monroe_logodds(mat)
+    return delta[doc2idx[term]], sigma[doc2idx[term]]
 
 
 def select_top_logodds(
@@ -94,7 +105,6 @@ def select_top_logodds(
     doc2idx: dict[str, int],
     words: list[str],
     top_terms: list[str],
-    min_count: int,
     top_adj: int,
 ) -> list[dict]:
     """Compute log-odds for each top term; return top adjectives per term by |score|."""
@@ -103,12 +113,9 @@ def select_top_logodds(
         delta, sigma = compute_logodds(mat, docs, doc2idx, words, term)
         score = delta / sigma
         term_idx = doc2idx[term]
-        # Collect all adj rows meeting min_count, sorted by |score| descending
         candidates = []
         for j, word in enumerate(words):
             count = int(mat[term_idx][j])
-            if count < min_count:
-                continue
             candidates.append(
                 {
                     "term": term,
@@ -130,13 +137,17 @@ def collect_examples(
     col_doc: str,
     col_word: str,
     max_per_pair: int = 10,
-) -> dict[str, dict[str, list[str]]]:
-    """Collect example sentences for each (term, adj) pair with early stopping."""
+) -> dict[str, dict[str, list[dict]]]:
+    """Collect example sentences for each (term, adj) pair with early stopping.
+
+    Each example is ``{s: sentence, bk: book_id}``; the page looks the book up
+    in ``books.py``'s output.
+    """
     by_term: dict[str, set[str]] = defaultdict(set)
     for term, adj in term_adj_pairs:
         by_term[term].add(adj)
 
-    examples: dict[str, dict[str, list[str]]] = {
+    examples: dict[str, dict[str, list[dict]]] = {
         term: {adj: [] for adj in adjs} for term, adjs in by_term.items()
     }
 
@@ -155,14 +166,12 @@ def collect_examples(
                 continue
             sentence = _clean(row.sentence)
             done: set[str] = set()
-            for adj in adjs:
-                if adj is None:
-                    continue
-                adj_lower = str(adj).lower()
+            # A set, so an adjective repeated within a mention adds it only once.
+            for adj_lower in {str(adj).lower() for adj in adjs if adj is not None}:
                 if adj_lower in still_need:
                     bucket = examples[term][adj_lower]
                     if len(bucket) < max_per_pair:
-                        bucket.append(sentence)
+                        bucket.append({"s": sentence, "bk": row.book_id})
                         if len(bucket) >= max_per_pair:
                             done.add(adj_lower)
             still_need -= done
@@ -177,6 +186,15 @@ def parse_args() -> argparse.Namespace:
         "-d",
         action="store_true",
         help="Use sample_for_analysis.parquet instead of final_for_analysis.parquet.",
+    )
+    parser.add_argument(
+        "--gender",
+        choices=["male", "female"],
+        default=None,
+        help=(
+            "Gender-controlled setup: only this gender's characters, one count per "
+            "(book, character, term), documents are term stems (default: corpus-wide)."
+        ),
     )
     parser.add_argument(
         "--top-terms",
@@ -194,19 +212,16 @@ def parse_args() -> argparse.Namespace:
         "--min-count",
         type=int,
         default=10,
-        help="Minimum character-pair count for an adjective to be included (default: 10).",
+        help=(
+            "Drop terms and adjectives with fewer than N (unit, adjective) pairs "
+            "before building the matrix (default: 10)."
+        ),
     )
     parser.add_argument(
         "--max-examples",
         type=int,
         default=10,
         help="Maximum example sentences per (term, adj) pair (default: 10).",
-    )
-    parser.add_argument(
-        "--col-doc",
-        type=str,
-        default="term",
-        help="Column to use as document / fashion term (default: term).",
     )
     parser.add_argument(
         "--col-word",
@@ -227,34 +242,47 @@ def main() -> None:
     )
 
     df = pd.read_parquet(input_path).reset_index()
-    df = df[df.decade.isin(DECADES)]
+    units = prepare_units(df, args.gender)
+    pairs = explode_pairs(units, args.col_word, args.min_count)
 
-    term_counts = df[args.col_doc].value_counts()
-    top_terms = term_counts.head(args.top_terms).index.tolist()
-    print(f"Top {args.top_terms} terms: {top_terms}")
-
-    mat, docs, doc2idx, words, word2idx = build_count_matrix(
-        df, args.col_doc, args.col_word
-    )
+    mat, docs, doc2idx, words, _word2idx = build_count_matrix(pairs)
     print(f"Matrix: {len(docs)} terms × {len(words)} adjectives")
 
+    # Most frequent terms by unit count, among those that survived the filter.
+    term_counts = units[DOC].value_counts()
+    top_terms = [t for t in term_counts.index if t in doc2idx][: args.top_terms]
+    print(f"Top {args.top_terms} terms: {top_terms}")
+
     logodds_rows = select_top_logodds(
-        mat, docs, doc2idx, words, top_terms, args.min_count, args.top_adj
+        mat, docs, doc2idx, words, top_terms, args.top_adj
     )
 
+    # Examples come from every mention of the term, not just the counted units.
+    sentences = df.drop_duplicates(subset=["book_id", "mention_id"])
+    if args.gender is not None:
+        sentences = sentences[sentences.gender_dep_pron.eq(args.gender)]
+    sentences = sentences.assign(
+        **{DOC: sentences["term" if args.gender is None else "term_stem"].str.lower()}
+    )
     term_adj_pairs = [(row["term"], row["adjective"]) for row in logodds_rows]
     examples = collect_examples(
-        df, term_adj_pairs, args.col_doc, args.col_word, args.max_examples
+        sentences, term_adj_pairs, DOC, args.col_word, args.max_examples
     )
 
     output = {
         "terms": top_terms,
         "logodds": logodds_rows,
+        "setup": {
+            "gender": args.gender,
+            "unit": "mention" if args.gender is None else "character",
+            "min_count": args.min_count,
+        },
         "examples": examples,
     }
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / "logodds.json"
+    name = "logodds.json" if args.gender is None else f"logodds_{args.gender}.json"
+    out_path = OUTPUT_DIR / name
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False)
 

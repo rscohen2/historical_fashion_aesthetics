@@ -7,7 +7,7 @@ decades, with binomial 95% confidence intervals. Each fashion item gets its
 own facet panel.
 
 Requires: data/analysis/gender_classifier/coefficients.parquet
-Output:   data/analysis/colors/color_prevalence_{gender}.html
+Output:   data/analysis/figures/colors/color_prevalence_{gender}.html
 """
 
 import argparse
@@ -23,7 +23,7 @@ from scipy.stats import norm
 from fashion.paths import DATA_DIR
 
 EXPERIMENT = "colors"
-OUTPUT_DIR = DATA_DIR / "analysis" / EXPERIMENT
+OUTPUT_DIR = DATA_DIR / "analysis" / "figures" / EXPERIMENT
 CLASSIFIER_OUTPUT = DATA_DIR / "analysis" / "gender_classifier" / "coefficients.parquet"
 DECADES = list(range(180, 192))
 

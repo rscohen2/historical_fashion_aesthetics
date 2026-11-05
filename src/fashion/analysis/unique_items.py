@@ -14,6 +14,8 @@ Metrics per character:
 For a bounded pool of the most fashion-y characters we also collect the top
 clothing items, fashion adjectives, character adjectives, and the context
 sentences for every item, so a card can be expanded down to the passage level.
+A card's title, author, and year are looked up by ``book_id`` in ``books.py``'s
+output.
 
 Output: data/analysis/unique_items/unique_items.json
 """
@@ -66,18 +68,6 @@ def char_key(book_id: str, character_id) -> str:
     return f"{book_id}::{int(character_id)}"
 
 
-def _clean_meta(value):
-    """Coerce a metadata cell to a clean string or None.
-
-    Missing cells in the title metadata come back from pandas as float NaN,
-    which ``json.dump`` would write as bare ``NaN`` (invalid JSON that the
-    browser's ``fetch().json()`` rejects). Normalise them to ``None``.
-    """
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return None
-    return _clean(str(value))
-
-
 def compute_character_stats(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate the three fashion-y metrics for every character."""
     grouped = df.groupby(["book_id", "character_id"])["term"]
@@ -111,9 +101,7 @@ def select_pool(
     entries because the pool guarantees the top-N of each is present.
     """
     eligible = stats[stats["num_mentions"] >= min_mentions]
-    non_narr = eligible[
-        eligible.index.get_level_values("character_id") != NARRATOR_ID
-    ]
+    non_narr = eligible[eligible.index.get_level_values("character_id") != NARRATOR_ID]
 
     def _top_union(frame_sort_col: str, n: int) -> pd.Index:
         # Tie-break by the other magnitude metric so ordering is deterministic.
@@ -141,7 +129,6 @@ def build_character_detail(
     df: pd.DataFrame,
     stats: pd.DataFrame,
     detail_pairs: set[tuple[str, int]],
-    metadata: dict,
     top_clothes: int,
     top_adjs: int,
     max_sentences: int,
@@ -173,7 +160,6 @@ def build_character_detail(
         genders = group["gender_dep_pron"].dropna()
         gender = genders.value_counts().index[0] if len(genders) else None
 
-        book_meta = metadata.get(book_id, {})
         stat = stats.loc[(book_id, character_id)]
         cid = char_key(book_id, character_id)
 
@@ -183,8 +169,6 @@ def build_character_detail(
             "book_id": book_id,
             "character_id": int(character_id),
             "is_narrator": int(character_id) == NARRATOR_ID,
-            "title": _clean_meta(book_meta.get("title")),
-            "author": _clean_meta(book_meta.get("author")),
             "gender": gender,
             "num_mentions": int(stat["num_mentions"]),
             "num_distinct": int(stat["num_distinct"]),
@@ -201,13 +185,6 @@ def build_character_detail(
             },
         }
     return characters
-
-
-def load_metadata() -> dict:
-    """Load Hathi title metadata keyed by ``book_id`` (docid + ``.clean``)."""
-    meta = pd.read_csv(DATA_DIR / "hathimeta" / "titlemeta.tsv", sep="\t")
-    meta["book_id"] = meta["docid"] + ".clean"
-    return meta.set_index("book_id").to_dict(orient="index")
 
 
 def parse_args() -> argparse.Namespace:
@@ -279,12 +256,10 @@ def main() -> None:
     )
     print(f"Building detail for {len(detail_pairs):,} characters")
 
-    metadata = load_metadata()
     characters = build_character_detail(
         df,
         stats,
         detail_pairs,
-        metadata,
         args.top_clothes,
         args.top_adjs,
         args.max_sentences,

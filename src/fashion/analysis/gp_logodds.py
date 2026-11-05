@@ -20,10 +20,11 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern, WhiteKernel
 from tqdm import tqdm
 
+from fashion.analysis.utils import monroe_logodds
 from fashion.paths import DATA_DIR
 
 EXPERIMENT = "gp_logodds"
-OUTPUT_DIR = DATA_DIR / "analysis" / EXPERIMENT
+OUTPUT_DIR = DATA_DIR / "analysis" / "figures" / EXPERIMENT
 DECADES = list(range(180, 192))
 DECADE_MIN = float(min(DECADES))
 DECADE_MAX = float(max(DECADES))
@@ -55,22 +56,8 @@ def _logodds_for_term(
     matrix: DocTermMatrix, term: str
 ) -> tuple[np.ndarray, np.ndarray]:
     """Monroe et al. (2008) Dirichlet-prior log-odds: returns (delta, sigma) for all words."""
-    mat = matrix.mat
-    group1_idx = [i for i, d in enumerate(matrix.idx2doc) if d == term]
-    group2_idx = [i for i, d in enumerate(matrix.idx2doc) if d != term]
-
-    n_prior = mat.sum()
-    g1 = mat[group1_idx].sum(axis=0)
-    g2 = mat[group2_idx].sum(axis=0)
-    n1 = float(g1.sum())
-    n2 = float(g2.sum())
-    prior = mat.sum(axis=0)
-
-    odds1 = (g1 + prior) / ((n1 + n_prior) - (g1 + prior))
-    odds2 = (g2 + prior) / ((n2 + n_prior) - (g2 + prior))
-    delta = np.log(odds1) - np.log(odds2)
-    sigma = np.sqrt(1.0 / (g1 + prior) + 1.0 / (g2 + prior))
-    return delta, sigma
+    delta, sigma = monroe_logodds(matrix.mat)
+    return delta[matrix.doc2idx[term]], sigma[matrix.doc2idx[term]]
 
 
 def compute_temporal_logodds(

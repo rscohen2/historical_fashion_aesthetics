@@ -7,6 +7,9 @@ const pages = [
   { to: '/adjective-categories', label: 'Adjective Categories' },
   { to: '/log-odds', label: 'Log-Odds' },
   { to: '/unique-items', label: 'Unique Items' },
+  { to: '/adjective-trends', label: 'Adjective Trends' },
+  { to: '/sae-log-odds', label: 'SAE Log-Odds' },
+  { to: '/sae-code-trends', label: 'SAE Code Trends' },
 ]
 
 export default function Nav() {

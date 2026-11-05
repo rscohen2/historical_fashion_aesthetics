@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
+import { toExample } from '../books.js'
+import BookCitation from '../components/BookCitation.jsx'
 
 function highlightTerm(sentence, term) {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -26,9 +28,10 @@ function SentencePanel({ term, adjective, sentences, onClose }) {
         {' '}worn by characters described elsewhere as <em>{adjective}</em>
       </p>
       <div className="sentence-list">
-        {sentences.map((s, i) => (
+        {sentences.map((ex, i) => (
           <blockquote key={i} className="sentence">
-            {highlightTerm(s, term)}
+            {highlightTerm(ex.s, term)}
+            <BookCitation id={ex.bk} />
           </blockquote>
         ))}
       </div>
@@ -46,7 +49,7 @@ export default function LogOdds() {
   const tooltip = useRef(null)
 
   useEffect(() => {
-    fetch('/data/logodds.json')
+    fetch(`${import.meta.env.BASE_URL}data/logodds.json`)
       .then((r) => r.json())
       .then((json) => {
         setData(json)
@@ -159,7 +162,7 @@ export default function LogOdds() {
 
   const sentences =
     selectedAdj && data.examples[selectedTerm]?.[selectedAdj]
-      ? data.examples[selectedTerm][selectedAdj]
+      ? data.examples[selectedTerm][selectedAdj].map(toExample)
       : []
 
   return (
