@@ -21,12 +21,12 @@ weighted avg       0.91      0.91      0.91      2305
 
 """
 
-import itertools
 import argparse
+import itertools
 import json
 
-from tqdm import tqdm
 from sklearn.metrics import classification_report
+from tqdm import tqdm
 
 from fashion.wearing import Wearing, WearingBert, WearingLLM
 from fashion.wearing.annotations import (
@@ -36,11 +36,29 @@ from fashion.wearing.annotations import (
 )
 
 
+def in_bounds_characters(datum: dict) -> list[bool]:
+    """Which of the datum's candidate characters lie inside its excerpt.
+
+    The excerpt is clipped to 500 characters on either side of the fashion term, so
+    some of the 10 nearest character mentions can fall outside it. Only in-bounds
+    characters are shown to the wearing model.
+    """
+    return [
+        char["character_start_idx"] - datum["excerpt_start"] >= 0
+        and char["character_end_idx"] - datum["excerpt_start"]
+        <= len(datum["excerpt_text"])
+        for char in datum["characters"]
+    ]
+
+
 def prepare_batch(
     batch_data: list[dict],
 ) -> tuple[
     list[str], list[tuple[int, int]], list[list[tuple[int, int]]], list[list[str]]
 ]:
+    """Inputs for Wearing.is_wearing. Entity spans and coref labels cover only the
+    in-bounds characters (see in_bounds_characters), and label_batch maps the
+    results back onto them."""
     batch_texts = [datum["excerpt_text"] for datum in batch_data]
     batch_fashion_spans = [
         (
@@ -49,44 +67,56 @@ def prepare_batch(
         )
         for datum in batch_data
     ]
-    # discard any out of bounds spans
-    # TODO: fix this in upstream code
+    batch_characters = [
+        [
+            char
+            for char, in_bounds in zip(datum["characters"], in_bounds_characters(datum))
+            if in_bounds
+        ]
+        for datum in batch_data
+    ]
     batch_entity_spans = [
         [
             (
                 char["character_start_idx"] - datum["excerpt_start"],
                 char["character_end_idx"] - datum["excerpt_start"],
             )
-            for char in datum["characters"]
-            if char["character_start_idx"] - datum["excerpt_start"] >= 0
-            and char["character_end_idx"] - datum["excerpt_start"]
-            <= len(datum["excerpt_text"])
+            for char in characters
         ]
-        for datum in batch_data
+        for datum, characters in zip(batch_data, batch_characters)
     ]
-    batch_coref_labels = get_batch_coref_labels(batch_data)
+    batch_coref_labels = get_batch_coref_labels(batch_characters)
     return batch_texts, batch_fashion_spans, batch_entity_spans, batch_coref_labels
 
 
-def get_batch_coref_labels(batch_data: list[dict]) -> list[list[str]]:
+def get_batch_coref_labels(batch_characters: list[list[dict]]) -> list[list[str]]:
     coref_labels = []
-    for datum in batch_data:
-        coref_set = set([char["coref"] for char in datum["characters"]])
+    for characters in batch_characters:
+        coref_set = {char["coref"] for char in characters}
         coref_idx = {coref: str(i) for i, coref in enumerate(coref_set)}
-        coref_labels.append([coref_idx[char["coref"]] for char in datum["characters"]])
+        coref_labels.append([coref_idx[char["coref"]] for char in characters])
     return coref_labels
 
 
 def label_batch(
     batch_data: list[dict], wearing_results: list[list[bool | None]]
 ) -> list[dict]:
+    """Set every candidate character's "wearing" label. wearing_results has one
+    label per in-bounds character, as prepare_batch passed them; out-of-bounds
+    characters were never scored, so they are labeled False, as are skipped ones
+    (None)."""
     labeled_batch = []
-    for datum, wearing_result in zip(batch_data, wearing_results):
-        for char, wearing_label in zip(datum["characters"], wearing_result):
-            if wearing_label is not None:
-                char["wearing"] = wearing_label
-            else:
-                char["wearing"] = False
+    for datum, wearing_result in zip(batch_data, wearing_results, strict=True):
+        in_bounds = in_bounds_characters(datum)
+        if len(wearing_result) != sum(in_bounds):
+            raise ValueError(
+                f"Got {len(wearing_result)} labels for {sum(in_bounds)} in-bounds "
+                f"characters of mention {datum['mention_id']} in {datum['book_id']}"
+            )
+        wearing_labels = iter(wearing_result)
+        for char, is_in_bounds in zip(datum["characters"], in_bounds):
+            wearing_label = next(wearing_labels) if is_in_bounds else None
+            char["wearing"] = wearing_label if wearing_label is not None else False
         labeled_batch.append(datum)
 
     return labeled_batch
@@ -155,5 +185,4 @@ if __name__ == "__main__":
     with open(
         f"data/evaluation/inference_{args.wearing_model.lower()}.ndjson", "w"
     ) as f:
-        for datum in output_data:
-            f.write(json.dumps(datum) + "\n")
+        f.writelines(json.dumps(datum) + "\n" for datum in output_data)

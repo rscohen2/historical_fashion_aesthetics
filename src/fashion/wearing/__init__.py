@@ -1,9 +1,9 @@
 from textwrap import dedent
-from datasets import Dataset
 
 import llm
 import numpy as np
 import pydantic
+from datasets import Dataset
 
 
 class WearingResponse(pydantic.BaseModel):
@@ -220,12 +220,14 @@ class WearingLLM(Wearing):
 class WearingBert(Wearing):
     def __init__(self, model_path: str = "data/deberta-wearing/checkpoint-900"):
         super().__init__()
-        from .bert import DebertaV2ForSpanClassification
-        from .bert import DebertaV2TokenizerFast
-        from .bert import DataCollator
-        from .bert import DataPreparer
-        from transformers import TrainingArguments
-        from transformers import Trainer
+        from transformers import Trainer, TrainingArguments
+
+        from .bert import (
+            DataCollator,
+            DataPreparer,
+            DebertaV2ForSpanClassification,
+            DebertaV2TokenizerFast,
+        )
 
         self.model = DebertaV2ForSpanClassification.from_pretrained(model_path)
         self.tokenizer = DebertaV2TokenizerFast.from_pretrained(
@@ -260,7 +262,7 @@ class WearingBert(Wearing):
                 sentences, fashion_spans, entity_spans, coref_labels
             ):
                 for entity_span, coref_label in zip(
-                    datum_entity_spans, datum_coref_labels
+                    datum_entity_spans, datum_coref_labels, strict=True
                 ):
                     yield {
                         "sentence": sentence,
@@ -301,10 +303,14 @@ class WearingBert(Wearing):
         results = self.trainer.predict(eval_dataset)
         labels = results.predictions.argmax(axis=1).astype(bool).tolist()
         skips = eval_dataset["skip"]
-        # renest to match the input
+        # renest to match the input: one prediction per entity span
         entity_counts = np.cumsum(
-            [0] + [len(datum_coref_labels) for datum_coref_labels in coref_labels]
+            [0] + [len(datum_entity_spans) for datum_entity_spans in entity_spans]
         )
+        if len(labels) != entity_counts[-1]:
+            raise RuntimeError(
+                f"Got {len(labels)} predictions for {entity_counts[-1]} entity spans"
+            )
         nested_labels = [
             [
                 bool(label) if not skip else None
